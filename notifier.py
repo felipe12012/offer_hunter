@@ -1,4 +1,5 @@
 import html
+import json
 import os
 import re
 import sys
@@ -30,7 +31,11 @@ DEFAULT_ALERTS = {
     ],
     "warn_from_pct": 80,
     "silent_below_pct": None,
+    # Offers at or above this discount go to the alert chat (when one is set).
+    "alert_chat_min_pct": 80,
 }
+BUTTON_TEXT = "🛒 Ir a la oferta"
+MAX_BUTTON_URL_LENGTH = 2000
 IMAGE_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -65,7 +70,12 @@ def _tier_label(scored: ScoredDeal, alerts: dict) -> str | None:
     return None
 
 
-def format_offer(scored: ScoredDeal, max_title: int = MAX_TITLE_LENGTH, alerts: dict | None = None) -> str:
+def format_offer(
+    scored: ScoredDeal,
+    max_title: int = MAX_TITLE_LENGTH,
+    alerts: dict | None = None,
+    include_link: bool = True,
+) -> str:
     deal = scored.deal
     config = _alerts(alerts)
     title = deal.title if len(deal.title) <= max_title else deal.title[: max_title - 1] + "…"
@@ -97,10 +107,11 @@ def format_offer(scored: ScoredDeal, max_title: int = MAX_TITLE_LENGTH, alerts: 
     if warn_from is not None and _rank_key(scored) >= warn_from:
         lines.append("⚠️ Descuento extremo: puede ser un error de precio. Confirma en la tienda antes de comprar.")
 
-    lines.append(f'🔗 <a href="{html.escape(deal.url, quote=True)}">Ver oferta</a>')
+    if include_link:
+        lines.append(f'🔗 <a href="{html.escape(deal.url, quote=True)}">Ver oferta</a>')
     text = "\n".join(lines)
     if len(text) > MAX_CAPTION_LENGTH and max_title > 60:
-        return format_offer(scored, max_title=60, alerts=alerts)
+        return format_offer(scored, max_title=60, alerts=alerts, include_link=include_link)
     return text
 
 
@@ -147,13 +158,40 @@ def _is_silent(scored: ScoredDeal, config: dict) -> bool:
     return threshold is not None and _rank_key(scored) < threshold
 
 
-def _send_one(scored: ScoredDeal, token: str, chat_id: str, alerts: dict | None = None) -> bool:
+def _link_button(url: str) -> dict | None:
+    """Inline keyboard with one URL button, or None when Telegram would reject
+    the URL (a rejected button would fail the whole message)."""
+    if not url.startswith(("http://", "https://")) or len(url) > MAX_BUTTON_URL_LENGTH:
+        return None
+    return {"inline_keyboard": [[{"text": BUTTON_TEXT, "url": url}]]}
+
+
+def _send_one(
+    scored: ScoredDeal,
+    token: str,
+    chat_id: str,
+    alerts: dict | None = None,
+    thread_id: int | None = None,
+    allow_silent: bool = True,
+) -> bool:
     config = _alerts(alerts)
-    caption = format_offer(scored, alerts=alerts)
+    markup = _link_button(scored.deal.url)
+    # With a button the link leaves the caption; without one it stays inside it.
+    caption = format_offer(scored, alerts=alerts, include_link=markup is None)
     image_url = scored.deal.image_url
-    silent = _is_silent(scored, config)
-    extra = {"disable_notification": True} if silent else {}
-    form_extra = {"disable_notification": "true"} if silent else {}
+    silent = allow_silent and _is_silent(scored, config)
+
+    extra: dict = {}
+    form_extra: dict = {}
+    if silent:
+        extra["disable_notification"] = True
+        form_extra["disable_notification"] = "true"
+    if thread_id is not None:
+        extra["message_thread_id"] = thread_id
+        form_extra["message_thread_id"] = str(thread_id)
+    if markup is not None:
+        extra["reply_markup"] = markup
+        form_extra["reply_markup"] = json.dumps(markup)
 
     if image_url:
         # 1) let Telegram fetch the image itself (cheapest).
@@ -237,8 +275,14 @@ def send_offers(
     bot_token: str | None = None,
     chat_id: str | None = None,
     alerts: dict | None = None,
+    alert_chat_id: str | None = None,
+    alert_thread_id: str | int | None = None,
 ) -> list[ScoredDeal]:
-    """Send each offer as its own Telegram message (photo + caption).
+    """Send each offer as its own Telegram message (photo + caption + link button).
+
+    Offers at or above ``alerts["alert_chat_min_pct"]`` go to the alert chat when
+    one is configured (argument or TELEGRAM_ALERT_CHAT_ID); everything else, and
+    any alert-chat failure, goes to the main chat.
 
     Returns the offers that were actually delivered, in send order, so the
     caller can mark only those as seen and retry the rest on the next run."""
@@ -248,13 +292,28 @@ def send_offers(
     bot_token = bot_token or os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = chat_id or os.environ.get("TELEGRAM_CHAT_ID")
 
+    # An unset GitHub secret reaches the job as an empty string.
+    alert_chat_id = alert_chat_id or os.environ.get("TELEGRAM_ALERT_CHAT_ID") or None
+    raw_thread = alert_thread_id or os.environ.get("TELEGRAM_ALERT_THREAD_ID") or None
+    thread_id = int(raw_thread) if raw_thread else None
+    alert_min = _alerts(alerts)["alert_chat_min_pct"]
+
     ordered = _round_robin_by_category(_dedupe_by_title(scored_deals), MAX_MESSAGES_PER_RUN)
 
     delivered: list[ScoredDeal] = []
     for index, scored in enumerate(ordered):
         if index:
             time.sleep(SEND_DELAY_SECONDS)
-        if _send_one(scored, bot_token, chat_id, alerts):
+
+        ok = False
+        if alert_chat_id and _rank_key(scored) >= alert_min:
+            ok = _send_one(scored, bot_token, alert_chat_id, alerts, thread_id, allow_silent=False)
+            if not ok:
+                print(f"Alert chat failed for {scored.deal.id}; falling back to the main chat", file=sys.stderr)
+        if not ok:
+            ok = _send_one(scored, bot_token, chat_id, alerts)
+
+        if ok:
             delivered.append(scored)
         else:
             print(f"Could not deliver offer {scored.deal.id}", file=sys.stderr)

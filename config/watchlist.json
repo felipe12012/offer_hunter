@@ -169,6 +169,7 @@
       }
     ],
     "warn_from_pct": 80,
-    "silent_below_pct": null
+    "silent_below_pct": 80,
+    "alert_chat_min_pct": 80
   }
 }

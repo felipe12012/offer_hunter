@@ -84,6 +84,8 @@ Los secretos viven en el **environment `env`** del repositorio (Settings → Env
 |---|---|---|---|
 | `TELEGRAM_BOT_TOKEN` | secret | Sí | Token del bot (se crea con [@BotFather](https://t.me/BotFather) → `/newbot`) |
 | `TELEGRAM_CHAT_ID` | secret | Sí | Chat que recibe las ofertas. Escríbele al bot y abre `https://api.telegram.org/bot<TOKEN>/getUpdates` para ver `"chat":{"id":...}` |
+| `TELEGRAM_ALERT_CHAT_ID` | secret | No | Segundo chat/canal/grupo solo para las ofertas grandes (`alerts.alert_chat_min_pct`, 80 %). Si no está, todo va al chat principal. Es un número, negativo para grupos y canales (`-100…`) |
+| `TELEGRAM_ALERT_THREAD_ID` | secret | No | Si el chat de alertas es un supergrupo con temas, el id del tema donde publicar |
 | `SCRAPER_PROXY` | secret | No | Proxy `http://user:pass@host:puerto` para las tiendas que usan navegador |
 | `INSTALL_BROWSER` | variable | No | `true` instala Chromium (~4 min). Solo hace falta si se reactiva Paris, Ripley o Tottus |
 
@@ -119,7 +121,8 @@ cuando falla.
 | `disabled_stores` | Tiendas que se omiten, p. ej. `["paris","ripley","tottus"]` |
 | `alerts.tiers` | Niveles de alerta: `[{"min_pct": 90, "label": "🚨🚨🚨 SUPER OFERTA"}, …]`. El mensaje abre con la etiqueta y el % (el mayor entre el descuento anunciado y el histórico) |
 | `alerts.warn_from_pct` | Desde este % se agrega la advertencia "puede ser un error de precio" (80) |
-| `alerts.silent_below_pct` | Si se define (ej. `60`), las ofertas con menos descuento llegan **sin sonido** y solo las grandes suenan. `null` = todas suenan |
+| `alerts.silent_below_pct` | Las ofertas del chat principal con menos descuento que esto llegan **sin sonido** (hoy `80`). `null` = todas suenan. Los mensajes del chat de alertas siempre suenan |
+| `alerts.alert_chat_min_pct` | Desde este % la oferta va al chat de alertas, si `TELEGRAM_ALERT_CHAT_ID` está definido (80) |
 | `scan.max_search_pages` | Páginas por búsqueda en Falabella/Sodimac (3) |
 | `scan.max_category_pages` | Páginas por categoría (4; son 48 productos por página) |
 | `scan.max_categories` | Tope de categorías descubiertas por tienda (80) |
@@ -133,7 +136,11 @@ cuando falla.
 
 ## 5. Telegram
 
-- **Un mensaje por oferta**: foto, título, tienda, precio actual, precio tachado, % y motivo, enlace.
+- **Un mensaje por oferta**: foto, título, tienda, precio actual, precio tachado, % y motivo, y un
+  botón **🛒 Ir a la oferta** debajo del mensaje (si la URL no sirve para un botón, el enlace va en el texto).
+- **Chat de alertas**: con `TELEGRAM_ALERT_CHAT_ID` configurado, las ofertas de 80 % o más van
+  ahí (siempre con sonido) y el resto al chat principal (en silencio). Si el chat de alertas
+  falla, la oferta se envía al principal: no se pierde.
 - Si Telegram no puede bajar la foto desde la URL, el programa la descarga y la sube; si tampoco, el
   mensaje sale sin foto. **Nunca se pierde una oferta por una imagen.**
 - Máximo **25 mensajes por run** (1,1 s entre mensajes y un reintento si Telegram responde 429).

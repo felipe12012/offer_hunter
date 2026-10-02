@@ -56,6 +56,11 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # Optional second destination for big discounts (alerts.alert_chat_min_pct)
+          # and, for a supergroup with topics, the topic id. Unset = all offers
+          # go to TELEGRAM_CHAT_ID.
+          TELEGRAM_ALERT_CHAT_ID: ${{ secrets.TELEGRAM_ALERT_CHAT_ID }}
+          TELEGRAM_ALERT_THREAD_ID: ${{ secrets.TELEGRAM_ALERT_THREAD_ID }}
           # Optional. Paris, Ripley and Tottus block GitHub's datacenter IPs with
           # a WAF/CloudFront 403, so they only scrape when the browser is routed
           # through a clean (ideally Chilean residential) proxy. Format:

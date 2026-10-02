@@ -64,6 +64,8 @@ class Recorder:
 
 
 def install(monkeypatch, recorder, get=None):
+    for name in ("TELEGRAM_ALERT_CHAT_ID", "TELEGRAM_ALERT_THREAD_ID"):
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr("notifier.requests.post", recorder)
     monkeypatch.setattr("notifier.requests.get", get or (lambda url, **kw: FakeResponse(200)))
     monkeypatch.setattr("notifier.time.sleep", lambda s: None)
@@ -244,11 +246,12 @@ def test_dedupes_same_title_within_a_store_keeping_the_best_rank(monkeypatch):
 
     send_offers(offers, bot_token="tok", chat_id="123")
 
-    captions = [c[1]["caption"] for c in rec.calls]
-    assert len(captions) == 2  # one per store
-    assert any("hites:2" in caption for caption in captions)      # the 80% one survives
-    assert not any("hites:1" in caption for caption in captions)
-    assert any("falabella:3" in caption for caption in captions)  # other store is not collapsed
+    # The product link now lives in the button, so identify offers by its URL.
+    urls = [c[1]["reply_markup"]["inline_keyboard"][0][0]["url"] for c in rec.calls]
+    assert len(urls) == 2  # one per store
+    assert any("hites:2" in url for url in urls)      # the 80% one survives
+    assert not any("hites:1" in url for url in urls)
+    assert any("falabella:3" in url for url in urls)  # other store is not collapsed
 
 
 ALERTS = {
@@ -349,3 +352,162 @@ def test_unconfirmed_web_discount_is_flagged_instead_of_shown_as_the_discount():
     assert "no verificado" in text
     assert "78%" in text                           # but the user can still see what the web claims
     assert "error de precio" not in text           # 45% verified is not an extreme discount
+
+
+# ---- link button -----------------------------------------------------------
+
+def _keyboard(body):
+    markup = body["reply_markup"]
+    if isinstance(markup, str):          # multipart uploads carry it as a JSON string
+        import json as _json
+        markup = _json.loads(markup)
+    return markup["inline_keyboard"]
+
+
+def test_photo_message_has_a_link_button_instead_of_a_caption_link(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    offer = make_scored("sodimac:1", store="falabella")
+
+    send_offers([offer], bot_token="tok", chat_id="123")
+
+    body = rec.calls[0][1]
+    button = _keyboard(body)[0][0]
+    assert button["url"] == offer.deal.url
+    assert "Ir a la oferta" in button["text"]
+    assert "Ver oferta" not in body["caption"]      # the link moved out of the caption
+
+
+def test_text_fallback_and_uploaded_photo_keep_the_button(monkeypatch):
+    rec = Recorder(fail_methods=("sendPhoto",))
+    install(monkeypatch, rec)
+    send_offers([make_scored("sodimac:1")], bot_token="tok", chat_id="123")
+    assert _keyboard(rec.calls[-1][1])[0][0]["url"].startswith("https://")
+
+    rec2 = Recorder(fail_photo_for=("blocked",))
+    install(monkeypatch, rec2)
+    send_offers([make_scored("sodimac:2", image_url="https://img.example/blocked.jpg")], bot_token="tok", chat_id="123")
+    assert rec2.calls[1][2] is not None                    # second attempt is the upload
+    assert _keyboard(rec2.calls[1][1])[0][0]["url"].startswith("https://")
+
+
+def test_offer_with_an_unusable_url_gets_no_button_so_telegram_cannot_reject_it(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    offer = make_scored("sodimac:1")
+    bad = ScoredDeal(
+        deal=Deal(**{**offer.deal.__dict__, "url": "not-a-url"}),
+        real_discount_pct=20.0, reasons=offer.reasons,
+    )
+
+    sent = send_offers([bad], bot_token="tok", chat_id="123")
+
+    assert sent == [bad]
+    assert "reply_markup" not in rec.calls[0][1]
+
+
+def test_format_offer_still_includes_the_link_by_default():
+    assert "https://www.sodimac.cl/product/sodimac:1" in format_offer(make_scored("sodimac:1"))
+
+
+# ---- separate destination for big discounts -------------------------------
+
+def _chat(call):
+    return str(call[1]["chat_id"])
+
+
+def _by_chat(rec):
+    result = {}
+    for call in rec.calls:
+        result.setdefault(_chat(call), []).append(call)
+    return result
+
+
+BIG = dict(discount_pct=85.0, real_discount_pct=0.0)
+SMALL = dict(discount_pct=35.0, real_discount_pct=0.0)
+
+
+def test_big_discounts_go_to_the_alert_chat_and_the_rest_to_the_main_chat(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    offers = [make_scored("sodimac:big", **BIG), make_scored("sodimac:small", **SMALL)]
+
+    sent = send_offers(offers, bot_token="tok", chat_id="MAIN", alert_chat_id="ALERT")
+
+    assert len(sent) == 2
+    chats = _by_chat(rec)
+    assert "sodimac:big" in chats["ALERT"][0][1]["caption"]
+    assert "sodimac:small" in chats["MAIN"][0][1]["caption"]
+    assert len(chats["ALERT"]) == 1 and len(chats["MAIN"]) == 1
+
+
+def test_everything_goes_to_the_main_chat_when_no_alert_chat_is_configured(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    send_offers([make_scored("sodimac:big", **BIG), make_scored("sodimac:small", **SMALL)],
+                bot_token="tok", chat_id="MAIN")
+    assert set(_by_chat(rec)) == {"MAIN"}
+
+
+def test_alert_chat_can_come_from_the_environment(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    monkeypatch.setenv("TELEGRAM_ALERT_CHAT_ID", "ENVALERT")
+    send_offers([make_scored("sodimac:big", **BIG)], bot_token="tok", chat_id="MAIN")
+    assert set(_by_chat(rec)) == {"ENVALERT"}
+
+
+def test_empty_alert_chat_env_is_treated_as_unset(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    monkeypatch.setenv("TELEGRAM_ALERT_CHAT_ID", "")   # an unset GitHub secret arrives as ""
+    send_offers([make_scored("sodimac:big", **BIG)], bot_token="tok", chat_id="MAIN")
+    assert set(_by_chat(rec)) == {"MAIN"}
+
+
+def test_alert_chat_threshold_is_configurable(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    send_offers([make_scored("sodimac:mid", discount_pct=65.0, real_discount_pct=0.0)],
+                bot_token="tok", chat_id="MAIN", alert_chat_id="ALERT", alerts={"alert_chat_min_pct": 60})
+    assert set(_by_chat(rec)) == {"ALERT"}
+
+
+def test_alert_topic_is_applied_only_to_alert_messages(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    send_offers([make_scored("sodimac:big", **BIG), make_scored("sodimac:small", **SMALL)],
+                bot_token="tok", chat_id="MAIN", alert_chat_id="ALERT", alert_thread_id="7")
+    chats = _by_chat(rec)
+    assert chats["ALERT"][0][1]["message_thread_id"] == 7
+    assert "message_thread_id" not in chats["MAIN"][0][1]
+
+
+def test_a_broken_alert_chat_falls_back_to_the_main_chat_instead_of_losing_the_offer(monkeypatch):
+    class AlertDown(Recorder):
+        def __call__(self, url, json=None, data=None, files=None, timeout=None):
+            body = json if json is not None else data
+            if str(body.get("chat_id")) == "ALERT":
+                self.calls.append((url.rsplit("/", 1)[-1], body, files))
+                return FakeResponse(400)
+            return super().__call__(url, json=json, data=data, files=files, timeout=timeout)
+
+    rec = AlertDown()
+    install(monkeypatch, rec)
+    offer = make_scored("sodimac:big", **BIG)
+
+    sent = send_offers([offer], bot_token="tok", chat_id="MAIN", alert_chat_id="ALERT")
+
+    assert sent == [offer]
+    assert "MAIN" in _by_chat(rec)
+
+
+def test_alert_chat_messages_always_ring_even_when_small_offers_are_silent(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    alerts = {"silent_below_pct": 95}                     # would silence the 85% offer in the main chat
+    send_offers([make_scored("sodimac:big", **BIG), make_scored("sodimac:small", **SMALL)],
+                bot_token="tok", chat_id="MAIN", alert_chat_id="ALERT", alerts=alerts)
+    chats = _by_chat(rec)
+    assert "disable_notification" not in chats["ALERT"][0][1]
+    assert chats["MAIN"][0][1]["disable_notification"] is True
