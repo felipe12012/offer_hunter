@@ -1,5 +1,6 @@
 # sources/falabella.py
 import re
+import sys
 from datetime import datetime, timezone
 from urllib.parse import quote
 
@@ -118,8 +119,9 @@ def fetch_deals(watchlist: dict) -> list[Deal]:
         # isolate it instead of letting it abort every other keyword.
         try:
             deals.extend(parse_html(fetch_html(keyword), category=keyword))
-        except Exception:
+        except Exception as exc:
             failures += 1
+            print(f"falabella keyword {keyword!r} failed: {exc}", file=sys.stderr)
     if keywords and failures == len(keywords):
         raise RuntimeError("All Falabella keywords failed")
     return deals

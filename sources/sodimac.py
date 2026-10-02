@@ -1,5 +1,6 @@
 # sources/sodimac.py
 import re
+import sys
 from datetime import datetime, timezone
 from urllib.parse import quote
 
@@ -142,6 +143,16 @@ def fetch_html(keyword: str) -> str:
 
 def fetch_deals(watchlist: dict) -> list[Deal]:
     deals: list[Deal] = []
-    for keyword in watchlist.get("keywords", []):
-        deals.extend(parse_html(fetch_html(keyword), category=keyword))
+    keywords = watchlist.get("keywords", [])
+    failures = 0
+    for keyword in keywords:
+        # One keyword can resolve to a product/category page with no grid —
+        # isolate it instead of letting it abort every other keyword.
+        try:
+            deals.extend(parse_html(fetch_html(keyword), category=keyword))
+        except Exception as exc:
+            failures += 1
+            print(f"sodimac keyword {keyword!r} failed: {exc}", file=sys.stderr)
+    if keywords and failures == len(keywords):
+        raise RuntimeError("All Sodimac keywords failed")
     return deals
