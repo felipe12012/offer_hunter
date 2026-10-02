@@ -1,0 +1,67 @@
+name: Probe Beauty Stores
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run probe
+        run: |
+          pip install requests
+          python - <<'PY'
+          import json
+          import requests
+
+          HEADERS = {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+              "Accept-Language": "es-CL,es;q=0.9",
+          }
+          DOMAINS = [
+              "https://www.salcobrand.cl",
+              "https://www.cruzverde.cl",
+              "https://www.farmaciasahumada.cl",
+              "https://www.preunic.cl",
+              "https://www.dermashop.cl",
+              "https://www.beautyshop.cl",
+              "https://www.purobeauty.cl",
+              "https://www.kerastase.cl",
+              "https://www.redken.cl",
+              "https://www.maicao.cl",
+          ]
+
+          for base in DOMAINS:
+              try:
+                  r = requests.get(base, headers=HEADERS, timeout=25, allow_redirects=True)
+                  body = r.text.lower()
+                  markers = [m for m in ("vtex", "shopify", "__next_data__", "woocommerce", "captcha", "cloudflare") if m in body]
+                  print(f"HOME {base} -> {r.status_code} final={r.url} len={len(r.text)} markers={markers}")
+                  t = r.text
+                  i = t.lower().find("<title")
+                  if i != -1:
+                      print("      title:", t[i:i+120].split(">", 1)[-1][:90])
+              except Exception as e:
+                  print(f"HOME {base} -> ERROR {type(e).__name__}: {e}")
+
+              for term in ("kerastase", "redken"):
+                  api = f"{base}/api/catalog_system/pub/products/search?ft={term}&_from=0&_to=4"
+                  try:
+                      r = requests.get(api, headers=HEADERS, timeout=25)
+                      status = r.status_code
+                      count = ""
+                      names = []
+                      if status == 200:
+                          try:
+                              data = r.json()
+                              count = len(data)
+                              names = [p.get("productName", "")[:45] for p in data[:3]]
+                          except Exception:
+                              count = "non-json"
+                      print(f"VTEX {base} ?ft={term} -> {status} n={count} {names}")
+                  except Exception as e:
+                      print(f"VTEX {base} ?ft={term} -> ERROR {type(e).__name__}")
+          PY
