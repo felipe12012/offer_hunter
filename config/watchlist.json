@@ -29,6 +29,7 @@
   ],
   "min_discount_pct": 30,
   "min_real_discount_pct": 15,
+  "verify_advertised_discount": false,
   "disabled_stores": [
     "paris",
     "ripley",
