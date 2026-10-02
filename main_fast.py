@@ -231,6 +231,16 @@ def selftest(limit: int = 3) -> int:
         ScoredDeal(deal=deal, real_discount_pct=0.0, reasons=["PRUEBA de envio: no es una oferta verificada"])
         for deal in picked
     ]
+    if offers:
+        # Make the first one a simulated 85% alert so the test also exercises
+        # the big-discount path (alert chat/channel, loud header, warning).
+        first = offers[0]
+        offers[0] = ScoredDeal(
+            deal=first.deal,
+            real_discount_pct=0.0,
+            reasons=["PRUEBA de alerta grande (85% simulado): debe llegar al canal de alertas"],
+            verified_pct=85.0,
+        )
     delivered = send_offers(offers, alerts=watchlist.get("alerts"))
     print(f"Selftest: delivered {len(delivered)}/{len(offers)} test messages", file=sys.stderr)
     return 0 if offers and len(delivered) == len(offers) else 1

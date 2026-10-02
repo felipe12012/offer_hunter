@@ -222,3 +222,24 @@ def test_same_marketplace_product_on_two_stores_is_sent_once_but_remembered_for_
     assert len(sent) == 1 and len(sent[0]) == 1          # one message, not two
     seen = json.loads((tmp_path / "seen_items.json").read_text(encoding="utf-8"))
     assert sorted(seen) == ["falabella:777:5000", "sodimac:777:5000"]  # neither is re-sent next run
+
+
+def test_selftest_includes_one_simulated_big_alert_and_touches_no_state(monkeypatch, tmp_path):
+    _patch_paths(monkeypatch, tmp_path)
+    import dataclasses
+
+    deals = [
+        dataclasses.replace(make_deal(f"{store}:{i}", 10000 + i), store=store)
+        for i, store in enumerate(["sodimac", "falabella", "hites"])
+    ]
+    monkeypatch.setattr(main_fast, "fetch_all_deals", lambda watchlist: deals)
+    sent = []
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: sent.append(list(scored)) or scored)
+
+    assert main_fast.selftest() == 0
+
+    assert len(sent[0]) == 3
+    assert sent[0][0].verified_pct >= 80                  # one goes through the alert path
+    assert all("PRUEBA" in offer.reasons[0] for offer in sent[0])
+    assert not (tmp_path / "seen_items.json").exists()
+    assert not (tmp_path / "price_history.json").exists()
