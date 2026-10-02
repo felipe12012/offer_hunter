@@ -26,7 +26,13 @@ jobs:
     runs-on: ubuntu-latest
     environment: env
     steps:
+      # Check out the branch tip, not the commit that existed when the run was
+      # triggered. A run queued behind another (see `concurrency`) would
+      # otherwise start from stale data/, re-send offers the previous run just
+      # delivered, and then fail to push because main moved on.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
 
       - uses: actions/setup-python@v5
         with:

@@ -69,3 +69,11 @@ def test_workflow_dispatch_offers_a_selftest_input():
     assert inputs["selftest"]["type"] == "boolean"
     run_step = next(step for step in parsed["jobs"]["run-pipeline"]["steps"] if step.get("name") == "Run pipeline")
     assert "--selftest" in run_step["run"]
+
+
+def test_checkout_uses_branch_tip_so_queued_runs_never_start_from_stale_data():
+    parsed = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
+    checkout = next(
+        step for step in parsed["jobs"]["run-pipeline"]["steps"] if str(step.get("uses", "")).startswith("actions/checkout")
+    )
+    assert "default_branch" in checkout["with"]["ref"]
