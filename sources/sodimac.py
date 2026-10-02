@@ -56,10 +56,47 @@ def _extract_deal(card, category: str) -> Deal | None:
     )
 
 
+def _extract_pod_deal(pod, category: str) -> Deal | None:
+    sku = pod.get("data-key")
+    internet_el = pod.select_one("li[data-internet-price]")
+    if not sku or internet_el is None:
+        return None
+
+    price = _parse_price(internet_el.get("data-internet-price", ""))
+    normal_el = pod.select_one("li[data-normal-price]")
+    list_price = _parse_price(normal_el.get("data-normal-price", "")) if normal_el is not None else price
+    if list_price < price:
+        list_price = price
+
+    brand_el = pod.select_one(".pod-title")
+    subtitle_el = pod.select_one(".pod-subTitle")
+    parts = [el.get_text(strip=True) for el in (brand_el, subtitle_el) if el is not None]
+    title = " ".join(part for part in parts if part)
+    href = pod.get("href", "")
+    if not title or not href or price <= 0:
+        return None
+
+    discount_pct = round((list_price - price) / list_price * 100, 1) if list_price else 0.0
+    url = f"{BASE_URL}{href}" if href.startswith("/") else href
+
+    return Deal(
+        id=f"sodimac:{sku}",
+        title=title,
+        url=url,
+        store="sodimac",
+        category=category,
+        price=price,
+        list_price=list_price,
+        discount_pct=discount_pct,
+        scraped_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
 def parse_html(html: str, category: str) -> list[Deal]:
     soup = BeautifulSoup(html, "html.parser")
     cards = soup.select(".product-wrapper")
-    if not cards:
+    pods = soup.select("a.pod-link[data-pod]")
+    if not cards and not pods:
         title = soup.title.get_text(strip=True) if soup.title else "<no title>"
         raise RuntimeError(
             "No product cards found on Sodimac search results page; "
@@ -71,6 +108,11 @@ def parse_html(html: str, category: str) -> list[Deal]:
     seen_ids: set[str] = set()
     for card in cards:
         deal = _extract_deal(card, category)
+        if deal is not None and deal.id not in seen_ids:
+            seen_ids.add(deal.id)
+            deals.append(deal)
+    for pod in pods:
+        deal = _extract_pod_deal(pod, category)
         if deal is not None and deal.id not in seen_ids:
             seen_ids.add(deal.id)
             deals.append(deal)
@@ -90,7 +132,7 @@ def fetch_html(keyword: str) -> str:
         page = context.new_page()
         page.goto(url, timeout=30000, wait_until="domcontentloaded")
         try:
-            page.wait_for_selector(".product-wrapper", timeout=15000)
+            page.wait_for_selector(".product-wrapper, a.pod-link", timeout=15000)
         except Exception:
             pass
         html = page.content()

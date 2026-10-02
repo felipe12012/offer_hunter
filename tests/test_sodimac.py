@@ -42,3 +42,29 @@ def test_parse_html_raises_when_no_product_cards_found():
     html = "<html><body>no products here</body></html>"
     with pytest.raises(RuntimeError):
         parse_html(html, category="notebook")
+
+
+POD_FIXTURE_PATH = Path(__file__).parent / "fixtures" / "sodimac_pod_sample.html"
+
+
+def test_parse_html_pod_layout_extracts_real_discount_from_data_attributes():
+    html = POD_FIXTURE_PATH.read_text(encoding="utf-8")
+    result = parse_html(html, category="taladro")
+
+    assert {d.id for d in result} == {"sodimac:153777946", "sodimac:140625674"}
+    kit = next(d for d in result if d.id == "sodimac:153777946")
+    assert kit.price == 149990
+    assert kit.list_price == 219990
+    assert kit.discount_pct == 31.8
+    assert kit.title.startswith("DEWALT Kit Taladro")
+    assert kit.url.startswith("https://www.sodimac.cl/sodimac-cl/articulo/153777946/")
+
+
+def test_parse_html_pod_layout_without_crossed_price_has_zero_discount():
+    html = POD_FIXTURE_PATH.read_text(encoding="utf-8")
+    result = parse_html(html, category="taladro")
+
+    plain = next(d for d in result if d.id == "sodimac:140625674")
+    assert plain.price == 139990
+    assert plain.list_price == 139990
+    assert plain.discount_pct == 0.0
