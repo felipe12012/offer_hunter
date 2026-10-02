@@ -74,8 +74,13 @@ def run() -> int:
         if scored:
             candidates.append(scored)
 
+    print(
+        f"Scanned {len(deals)} deals, {len(new_keys)} new, {len(candidates)} qualifying",
+        file=sys.stderr,
+    )
     try:
-        send_digest(candidates)
+        sent = send_digest(candidates)
+        print(f"Telegram digest sent: {bool(sent)}", file=sys.stderr)
     except Exception as exc:
         print(f"Notification failed: {exc}", file=sys.stderr)
         return 1
