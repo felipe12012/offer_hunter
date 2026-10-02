@@ -18,6 +18,19 @@ MAX_CAPTION_LENGTH = 1024
 MAX_TITLE_LENGTH = 180
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
 MAX_RETRY_AFTER_SECONDS = 30
+# Alert levels by discount (the larger of the advertised and the historical one).
+# Overridable from the watchlist's "alerts" block. "warn_from_pct" adds a
+# caution line, because an extreme discount can also be a store pricing error.
+# "silent_below_pct" (off by default) sends smaller offers without a sound.
+DEFAULT_ALERTS = {
+    "tiers": [
+        {"min_pct": 90, "label": "🚨🚨🚨 SUPER OFERTA"},
+        {"min_pct": 80, "label": "🚨 OFERTAZA"},
+        {"min_pct": 60, "label": "🔥 GRAN OFERTA"},
+    ],
+    "warn_from_pct": 80,
+    "silent_below_pct": None,
+}
 IMAGE_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -37,10 +50,29 @@ def _format_clp(amount: int) -> str:
     return f"${amount:,}".replace(",", ".")
 
 
-def format_offer(scored: ScoredDeal, max_title: int = MAX_TITLE_LENGTH) -> str:
+def _alerts(alerts: dict | None) -> dict:
+    return {**DEFAULT_ALERTS, **(alerts or {})}
+
+
+def _tier_label(scored: ScoredDeal, alerts: dict) -> str | None:
+    pct = _rank_key(scored)
+    for tier in sorted(alerts["tiers"], key=lambda t: t["min_pct"], reverse=True):
+        if pct >= tier["min_pct"]:
+            return tier["label"]
+    return None
+
+
+def format_offer(scored: ScoredDeal, max_title: int = MAX_TITLE_LENGTH, alerts: dict | None = None) -> str:
     deal = scored.deal
+    config = _alerts(alerts)
     title = deal.title if len(deal.title) <= max_title else deal.title[: max_title - 1] + "…"
-    lines = [f"🔥 <b>{html.escape(title)}</b>", f"🏬 {html.escape(deal.store.title())}"]
+
+    label = _tier_label(scored, config)
+    if label:
+        lines = [f"{html.escape(label)} -{_rank_key(scored):.0f}%", f"<b>{html.escape(title)}</b>"]
+    else:
+        lines = [f"🔥 <b>{html.escape(title)}</b>"]
+    lines.append(f"🏬 {html.escape(deal.store.title())}")
 
     price_line = f"💰 <b>{_format_clp(deal.price)}</b>"
     if deal.list_price > deal.price:
@@ -52,10 +84,14 @@ def format_offer(scored: ScoredDeal, max_title: int = MAX_TITLE_LENGTH) -> str:
     for reason in scored.reasons:
         lines.append(f"✅ {html.escape(reason[:200])}")
 
+    warn_from = config.get("warn_from_pct")
+    if warn_from is not None and _rank_key(scored) >= warn_from:
+        lines.append("⚠️ Descuento extremo: puede ser un error de precio. Confirma en la tienda antes de comprar.")
+
     lines.append(f'🔗 <a href="{html.escape(deal.url, quote=True)}">Ver oferta</a>')
     text = "\n".join(lines)
     if len(text) > MAX_CAPTION_LENGTH and max_title > 60:
-        return format_offer(scored, max_title=60)
+        return format_offer(scored, max_title=60, alerts=alerts)
     return text
 
 
@@ -97,16 +133,25 @@ def _download_image(url: str) -> bytes | None:
     return response.content
 
 
-def _send_one(scored: ScoredDeal, token: str, chat_id: str) -> bool:
-    caption = format_offer(scored)
+def _is_silent(scored: ScoredDeal, config: dict) -> bool:
+    threshold = config.get("silent_below_pct")
+    return threshold is not None and _rank_key(scored) < threshold
+
+
+def _send_one(scored: ScoredDeal, token: str, chat_id: str, alerts: dict | None = None) -> bool:
+    config = _alerts(alerts)
+    caption = format_offer(scored, alerts=alerts)
     image_url = scored.deal.image_url
+    silent = _is_silent(scored, config)
+    extra = {"disable_notification": True} if silent else {}
+    form_extra = {"disable_notification": "true"} if silent else {}
 
     if image_url:
         # 1) let Telegram fetch the image itself (cheapest).
         if _post(
             token,
             "sendPhoto",
-            json={"chat_id": chat_id, "photo": image_url, "caption": caption, "parse_mode": "HTML"},
+            json={"chat_id": chat_id, "photo": image_url, "caption": caption, "parse_mode": "HTML", **extra},
         ):
             return True
         # 2) some CDNs refuse Telegram's fetcher or serve formats it rejects:
@@ -115,7 +160,7 @@ def _send_one(scored: ScoredDeal, token: str, chat_id: str) -> bool:
         if image is not None and _post(
             token,
             "sendPhoto",
-            data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"},
+            data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML", **form_extra},
             files={"photo": ("offer.jpg", image)},
         ):
             return True
@@ -124,7 +169,7 @@ def _send_one(scored: ScoredDeal, token: str, chat_id: str) -> bool:
     return _post(
         token,
         "sendMessage",
-        json={"chat_id": chat_id, "text": caption, "parse_mode": "HTML"},
+        json={"chat_id": chat_id, "text": caption, "parse_mode": "HTML", **extra},
     )
 
 
@@ -182,6 +227,7 @@ def send_offers(
     scored_deals: list[ScoredDeal],
     bot_token: str | None = None,
     chat_id: str | None = None,
+    alerts: dict | None = None,
 ) -> list[ScoredDeal]:
     """Send each offer as its own Telegram message (photo + caption).
 
@@ -199,7 +245,7 @@ def send_offers(
     for index, scored in enumerate(ordered):
         if index:
             time.sleep(SEND_DELAY_SECONDS)
-        if _send_one(scored, bot_token, chat_id):
+        if _send_one(scored, bot_token, chat_id, alerts):
             delivered.append(scored)
         else:
             print(f"Could not deliver offer {scored.deal.id}", file=sys.stderr)

@@ -55,7 +55,7 @@ def test_run_sends_digest_and_persists_state(monkeypatch, tmp_path):
     _stub_all_sources(monkeypatch, fetch_sodimac_deals=lambda watchlist: [make_deal("sodimac:1", 5000)])
 
     sent = {}
-    monkeypatch.setattr(main_fast, "send_offers", lambda scored: sent.setdefault("offers", list(scored)) or scored)
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: sent.setdefault("offers", list(scored)) or scored)
 
     exit_code = main_fast.run()
 
@@ -83,7 +83,7 @@ def test_run_does_not_compare_real_discount_against_its_own_just_scraped_price(m
     _stub_all_sources(monkeypatch, fetch_sodimac_deals=lambda watchlist: [make_deal("sodimac:1", 5000)])
 
     captured = {}
-    monkeypatch.setattr(main_fast, "send_offers", lambda scored: captured.setdefault("scored", list(scored)) or scored)
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: captured.setdefault("scored", list(scored)) or scored)
 
     main_fast.run()
 
@@ -98,7 +98,7 @@ def test_run_skips_already_seen_id_price_pairs(monkeypatch, tmp_path):
     _stub_all_sources(monkeypatch, fetch_sodimac_deals=lambda watchlist: [make_deal("sodimac:1", 5000)])
 
     captured = {"scored": []}
-    monkeypatch.setattr(main_fast, "send_offers", lambda scored: captured.__setitem__("scored", list(scored)) or scored)
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: captured.__setitem__("scored", list(scored)) or scored)
 
     main_fast.run()
 
@@ -127,7 +127,7 @@ def test_run_leaves_undelivered_offers_unseen_so_they_retry_next_run(monkeypatch
         fetch_sodimac_deals=lambda watchlist: [make_deal("sodimac:1", 5000), make_deal("sodimac:2", 5000)],
     )
     # Telegram only manages to deliver the first offer.
-    monkeypatch.setattr(main_fast, "send_offers", lambda scored: [s for s in scored if s.deal.id == "sodimac:1"])
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: [s for s in scored if s.deal.id == "sodimac:1"])
 
     assert main_fast.run() == 0
 
@@ -141,7 +141,7 @@ def test_run_returns_1_and_persists_nothing_when_no_offer_can_be_delivered(monke
         json.dumps({"sodimac:1": [{"date": "2026-09-20", "price": 9990}]}), encoding="utf-8"
     )
     _stub_all_sources(monkeypatch, fetch_sodimac_deals=lambda watchlist: [make_deal("sodimac:1", 5000)])
-    monkeypatch.setattr(main_fast, "send_offers", lambda scored: [])
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: [])
 
     assert main_fast.run() == 1
     assert not (tmp_path / "seen_items.json").exists()
@@ -160,7 +160,7 @@ def test_run_does_not_notify_advertised_discount_that_history_cannot_confirm(mon
         monkeypatch, fetch_sodimac_deals=lambda watchlist: [make_deal("sodimac:1", 10000, list_price=25000)]
     )
     calls = []
-    monkeypatch.setattr(main_fast, "send_offers", lambda scored: calls.append(list(scored)) or scored)
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: calls.append(list(scored)) or scored)
 
     assert main_fast.run() == 0
 
@@ -183,7 +183,7 @@ def test_disabled_stores_are_not_fetched(monkeypatch, tmp_path):
         return fetch
 
     _stub_all_sources(monkeypatch, **{attr: tracker(attr) for attr in main_fast.SOURCE_NAMES})
-    monkeypatch.setattr(main_fast, "send_offers", lambda scored: scored)
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: scored)
 
     assert main_fast.run() == 0
 
@@ -215,7 +215,7 @@ def test_same_marketplace_product_on_two_stores_is_sent_once_but_remembered_for_
         fetch_sodimac_deals=lambda watchlist: [deal_for("sodimac")],
     )
     sent = []
-    monkeypatch.setattr(main_fast, "send_offers", lambda scored: sent.append(list(scored)) or scored)
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: sent.append(list(scored)) or scored)
 
     assert main_fast.run() == 0
 

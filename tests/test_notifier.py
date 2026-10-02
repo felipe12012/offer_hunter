@@ -249,3 +249,81 @@ def test_dedupes_same_title_within_a_store_keeping_the_best_rank(monkeypatch):
     assert any("hites:2" in caption for caption in captions)      # the 80% one survives
     assert not any("hites:1" in caption for caption in captions)
     assert any("falabella:3" in caption for caption in captions)  # other store is not collapsed
+
+
+ALERTS = {
+    "tiers": [
+        {"min_pct": 90, "label": "🚨🚨🚨 SUPER OFERTA"},
+        {"min_pct": 80, "label": "🚨 OFERTAZA"},
+        {"min_pct": 60, "label": "🔥 GRAN OFERTA"},
+    ],
+}
+
+
+def test_default_tiers_put_a_loud_header_on_90_percent_and_up():
+    text = format_offer(make_scored("sodimac:1", discount_pct=92.0, real_discount_pct=0.0))
+    assert text.splitlines()[0].startswith("🚨🚨🚨")
+    assert "-92%" in text.splitlines()[0]
+
+
+def test_default_tiers_label_80_percent_differently_from_90():
+    text = format_offer(make_scored("sodimac:1", discount_pct=85.0, real_discount_pct=0.0))
+    assert text.splitlines()[0].startswith("🚨")
+    assert not text.splitlines()[0].startswith("🚨🚨🚨")
+
+
+def test_tier_uses_the_larger_of_advertised_and_historical_discount():
+    text = format_offer(make_scored("sodimac:1", discount_pct=10.0, real_discount_pct=91.0))
+    assert text.splitlines()[0].startswith("🚨🚨🚨")
+
+
+def test_ordinary_offer_keeps_the_plain_header():
+    text = format_offer(make_scored("sodimac:1", discount_pct=35.0, real_discount_pct=0.0))
+    assert text.splitlines()[0].startswith("🔥 <b>")
+
+
+def test_extreme_discount_warns_it_may_be_a_price_error():
+    extreme = format_offer(make_scored("sodimac:1", discount_pct=88.0, real_discount_pct=0.0))
+    ordinary = format_offer(make_scored("sodimac:2", discount_pct=40.0, real_discount_pct=0.0))
+    assert "error de precio" in extreme
+    assert "error de precio" not in ordinary
+
+
+def test_tiers_can_be_overridden_from_the_watchlist():
+    custom = {"tiers": [{"min_pct": 50, "label": "⭐ BUENA"}]}
+    text = format_offer(make_scored("sodimac:1", discount_pct=55.0, real_discount_pct=0.0), alerts=custom)
+    assert text.splitlines()[0].startswith("⭐ BUENA")
+
+
+def test_offers_notify_with_sound_by_default(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    send_offers([make_scored("sodimac:1", discount_pct=35.0)], bot_token="tok", chat_id="123")
+    assert "disable_notification" not in rec.calls[0][1]
+
+
+def test_low_discounts_are_silent_but_big_ones_still_ring_when_configured(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    alerts = {**ALERTS, "silent_below_pct": 60}
+    offers = [
+        make_scored("sodimac:small", discount_pct=35.0, real_discount_pct=0.0),
+        make_scored("sodimac:big", discount_pct=85.0, real_discount_pct=0.0),
+    ]
+
+    send_offers(offers, bot_token="tok", chat_id="123", alerts=alerts)
+
+    by_id = {("big" if "sodimac:big" in c[1]["caption"] else "small"): c[1] for c in rec.calls}
+    assert by_id["big"].get("disable_notification") in (None, False)
+    assert by_id["small"]["disable_notification"] is True
+
+
+def test_silent_flag_also_applies_to_text_fallback(monkeypatch):
+    rec = Recorder(fail_methods=("sendPhoto",))
+    install(monkeypatch, rec)
+    send_offers(
+        [make_scored("sodimac:1", discount_pct=35.0, real_discount_pct=0.0)],
+        bot_token="tok", chat_id="123", alerts={"silent_below_pct": 60},
+    )
+    assert rec.calls[-1][0] == "sendMessage"
+    assert rec.calls[-1][1]["disable_notification"] is True

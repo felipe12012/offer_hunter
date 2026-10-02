@@ -113,6 +113,9 @@ cuando falla.
 | `min_real_discount_pct` | Baja mínima contra el mínimo histórico (por defecto 15) |
 | `verify_advertised_discount` | `false` desactiva la confirmación por historial (por defecto `true`) |
 | `disabled_stores` | Tiendas que se omiten, p. ej. `["paris","ripley","tottus"]` |
+| `alerts.tiers` | Niveles de alerta: `[{"min_pct": 90, "label": "🚨🚨🚨 SUPER OFERTA"}, …]`. El mensaje abre con la etiqueta y el % (el mayor entre el descuento anunciado y el histórico) |
+| `alerts.warn_from_pct` | Desde este % se agrega la advertencia "puede ser un error de precio" (80) |
+| `alerts.silent_below_pct` | Si se define (ej. `60`), las ofertas con menos descuento llegan **sin sonido** y solo las grandes suenan. `null` = todas suenan |
 | `scan.max_search_pages` | Páginas por búsqueda en Falabella/Sodimac (3) |
 | `scan.max_category_pages` | Páginas por categoría (4; son 48 productos por página) |
 | `scan.max_categories` | Tope de categorías descubiertas por tienda (80) |

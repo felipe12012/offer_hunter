@@ -151,7 +151,7 @@ def run() -> int:
             candidates.append(scored)
 
     candidates, aliases = dedupe_cross_store(candidates)
-    delivered = send_offers(candidates) if candidates else []
+    delivered = send_offers(candidates, alerts=watchlist.get("alerts")) if candidates else []
     delivered_keys: set[str] = set()
     for scored in delivered:
         key = deal_key(scored.deal)
@@ -205,7 +205,7 @@ def selftest(limit: int = 3) -> int:
         ScoredDeal(deal=deal, real_discount_pct=0.0, reasons=["PRUEBA de envio: no es una oferta verificada"])
         for deal in picked
     ]
-    delivered = send_offers(offers)
+    delivered = send_offers(offers, alerts=watchlist.get("alerts"))
     print(f"Selftest: delivered {len(delivered)}/{len(offers)} test messages", file=sys.stderr)
     return 0 if offers and len(delivered) == len(offers) else 1
 

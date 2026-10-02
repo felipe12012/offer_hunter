@@ -151,5 +151,23 @@
       "jeans",
       "ropa niño"
     ]
+  },
+  "alerts": {
+    "tiers": [
+      {
+        "min_pct": 90,
+        "label": "🚨🚨🚨 SUPER OFERTA"
+      },
+      {
+        "min_pct": 80,
+        "label": "🚨 OFERTAZA"
+      },
+      {
+        "min_pct": 60,
+        "label": "🔥 GRAN OFERTA"
+      }
+    ],
+    "warn_from_pct": 80,
+    "silent_below_pct": null
   }
 }
