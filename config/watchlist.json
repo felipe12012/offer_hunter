@@ -3,7 +3,10 @@
     "tecnologia",
     "mascotas",
     "muebles",
-    "sony"
+    "sony",
+    "ropa",
+    "zapatillas",
+    "belleza"
   ],
   "keywords": [
     "audifonos",
@@ -11,7 +14,18 @@
     "alimento perro",
     "sillon",
     "taladro",
-    "sony"
+    "sony",
+    "tablet",
+    "zapatillas",
+    "zapatillas niño",
+    "zapatillas mujer",
+    "polera",
+    "pantalon",
+    "chaqueta",
+    "ropa bebe",
+    "crema facial",
+    "kerastase",
+    "redken"
   ],
   "min_discount_pct": 30,
   "min_real_discount_pct": 15,
@@ -64,6 +78,39 @@
       "herramientas": [
         "taladro",
         "herramientas-electricas"
+      ],
+      "zapatillas": [
+        "zapatilla",
+        "calzado",
+        "zapato",
+        "botines",
+        "sandalia"
+      ],
+      "ropa": [
+        "polera",
+        "pantalon",
+        "chaqueta",
+        "vestuario",
+        "ropa-",
+        "moda",
+        "jeans",
+        "vestido",
+        "ropa-de",
+        "bebe",
+        "nino",
+        "nina"
+      ],
+      "belleza": [
+        "crema",
+        "belleza",
+        "cuidado-de-la-piel",
+        "facial",
+        "perfume",
+        "maquillaje",
+        "capilar",
+        "cabello",
+        "cosmetica",
+        "dermocosmetica"
       ]
     },
     "max_hites_pages": 4,
@@ -79,7 +126,13 @@
       "colchon",
       "escritorio",
       "comedor",
-      "perro"
+      "perro",
+      "zapatilla",
+      "polera",
+      "chaqueta",
+      "vestido",
+      "jeans",
+      "ropa niño"
     ]
   }
 }
