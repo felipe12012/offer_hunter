@@ -77,3 +77,15 @@ def test_checkout_uses_branch_tip_so_queued_runs_never_start_from_stale_data():
         step for step in parsed["jobs"]["run-pipeline"]["steps"] if str(step.get("uses", "")).startswith("actions/checkout")
     )
     assert "default_branch" in checkout["with"]["ref"]
+
+
+def test_workflow_can_import_json_state_into_supabase_and_passes_the_secrets_to_the_scan():
+    parsed = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
+    assert parsed[True]["workflow_dispatch"]["inputs"]["migrate"]["type"] == "boolean"
+    steps = parsed["jobs"]["run-pipeline"]["steps"]
+    migrate = next(step for step in steps if "migrate_to_supabase" in (step.get("run") or ""))
+    run = next(step for step in steps if step.get("name") == "Run pipeline")
+    assert steps.index(migrate) < steps.index(run)          # import first, so the scan diffs against it
+    for step in (migrate, run):
+        assert "secrets.SUPABASE_URL" in step["env"]["SUPABASE_URL"]
+        assert "secrets.SUPABASE_SERVICE_KEY" in step["env"]["SUPABASE_SERVICE_KEY"]

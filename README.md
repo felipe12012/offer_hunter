@@ -86,6 +86,8 @@ Los secretos viven en el **environment `env`** del repositorio (Settings → Env
 | `TELEGRAM_CHAT_ID` | secret | Sí | Chat que recibe las ofertas. Escríbele al bot y abre `https://api.telegram.org/bot<TOKEN>/getUpdates` para ver `"chat":{"id":...}` |
 | `TELEGRAM_ALERT_CHAT_ID` | secret | No | Segundo chat/canal/grupo solo para las ofertas grandes (`alerts.alert_chat_min_pct`, 80 %). Si no está, todo va al chat principal. Es un número, negativo para grupos y canales (`-100…`) |
 | `TELEGRAM_ALERT_THREAD_ID` | secret | No | Si el chat de alertas es un supergrupo con temas, el id del tema donde publicar |
+| `SUPABASE_URL` | secret | No | `https://qxwxftmlqimfausocwoi.supabase.co`. Con las dos claves de Supabase definidas, cada escaneo también se guarda en la base de datos |
+| `SUPABASE_SERVICE_KEY` | secret | No | Clave **secreta** del proyecto (Supabase → Project Settings → API Keys → *Secret key*, `sb_secret_…`). Solo para servidores: nunca en código ni en chats |
 | `SCRAPER_PROXY` | secret | No | Proxy `http://user:pass@host:puerto` para las tiendas que usan navegador |
 | `INSTALL_BROWSER` | variable | No | `true` instala Chromium (~4 min). Solo hace falta si se reactiva Paris, Ripley o Tottus |
 
@@ -163,6 +165,42 @@ Los commits de estos archivos los hace el propio workflow (`chore: update seen i
 
 ---
 
+### Base de datos (Supabase)
+
+Además de los JSON, cada escaneo se copia a Postgres en el proyecto `job-hunter-agent` de Supabase
+(tablas con prefijo `offer_` en `public`; definidas en `supabase/migrations/0001_offer_hunter.sql`).
+Los JSON siguen siendo la fuente de verdad para decidir qué se envía; si Supabase falla, el run
+continúa y solo lo registra en el log (`Supabase sync failed…`).
+
+| Tabla | Contenido |
+|---|---|
+| `offer_products` | Un registro por producto: tienda, título, URL, imagen, precio actual y precio tachado |
+| `offer_price_points` | Historial de precios: un punto cada vez que cambia el precio o el tachado (con `list_price`) |
+| `offer_sent` | Cada oferta entregada, con porcentajes anunciado/verificado, motivos y fecha. Único por `(producto, precio)` |
+| `offer_scan_runs` | Una fila por escaneo: productos leídos, nuevos, calificados, entregados, por tienda y duración |
+
+Seguridad: RLS activado, sin políticas y sin permisos para `anon` ni `authenticated`; solo la clave
+secreta (rol `service_role`) puede leer o escribir.
+
+**Activación (una vez):**
+1. Crear los secretos `SUPABASE_URL` y `SUPABASE_SERVICE_KEY` en el environment `env`.
+2. Actions → *Fast Tier Deal Scan* → *Run workflow* → marcar **migrate** → ejecutar. Importa el
+   historial y las ofertas ya enviadas de los JSON y verifica los conteos. Se puede repetir sin duplicar.
+3. Los runs siguientes escriben solos. En el log aparece `Supabase: N products received, …`.
+
+Consultas útiles (SQL editor de Supabase):
+
+```sql
+-- Ofertas enviadas hoy
+select sent_at, store, title, verified_pct from offer_sent order by sent_at desc limit 50;
+-- Evolución de precio de un producto
+select observed_at, price, list_price from offer_price_points where product_id = 'falabella:126306018' order by observed_at;
+-- Salud de los últimos escaneos
+select started_at, scanned, qualifying, delivered, per_store, duration_seconds from offer_scan_runs order by started_at desc limit 20;
+```
+
+---
+
 ## 7. Mapa del código
 
 | Archivo | Responsabilidad |
@@ -172,6 +210,8 @@ Los commits de estos archivos los hace el propio workflow (`chore: update seen i
 | `deal_filter.py` | Reglas de la sección 2 |
 | `price_history.py` | Lectura/escritura del historial de precios |
 | `dedup.py` | Claves `id:precio` de ofertas ya entregadas |
+| `supabase_sync.py` | Cliente de Supabase: copia productos, puntos de precio, ofertas enviadas y estadísticas de cada run |
+| `migrate_to_supabase.py` | Importa una vez los JSON a Supabase (acción *migrate* del workflow) |
 | `notifier.py` | Formato y envío a Telegram (foto, reintentos, respaldo) |
 | `sources/nextdata.py` | Lector común del JSON incrustado (Falabella y Sodimac): paginación, descubrimiento de categorías |
 | `sources/falabella.py`, `sodimac.py` | Configuración de cada tienda sobre `nextdata` |

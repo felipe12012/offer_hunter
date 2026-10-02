@@ -5,6 +5,10 @@ on:
     - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
     inputs:
+      migrate:
+        description: "One time: import data/*.json into Supabase before the scan (safe to re-run)"
+        type: boolean
+        default: false
       selftest:
         description: "Send 3 real scraped products to Telegram as test messages (no state changes)"
         type: boolean
@@ -52,6 +56,13 @@ jobs:
           playwright install --with-deps chromium
           patchright install chromium
 
+      - name: Import JSON state into Supabase
+        if: ${{ inputs.migrate == true }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python migrate_to_supabase.py
+
       - name: Run pipeline
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -59,6 +70,10 @@ jobs:
           # Optional second destination for big discounts (alerts.alert_chat_min_pct)
           # and, for a supergroup with topics, the topic id. Unset = all offers
           # go to TELEGRAM_CHAT_ID.
+          # Optional. When both are set, every scan is also written to Supabase
+          # (supabase_sync.py). Unset = JSON files only.
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           TELEGRAM_ALERT_CHAT_ID: ${{ secrets.TELEGRAM_ALERT_CHAT_ID }}
           TELEGRAM_ALERT_THREAD_ID: ${{ secrets.TELEGRAM_ALERT_THREAD_ID }}
           # Optional. Paris, Ripley and Tottus block GitHub's datacenter IPs with

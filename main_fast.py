@@ -1,6 +1,9 @@
 # main_fast.py
 import json
+import os
 import sys
+import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -11,6 +14,7 @@ from dedup import deal_key, load_seen, mark_seen
 from models import Deal, ScoredDeal
 from notifier import send_offers
 from price_history import load_price_history, save_price_history, update_price_history
+from supabase_sync import SupabaseSync, log_failure
 from sources.asics import fetch_deals as fetch_asics_deals
 from sources.converse import fetch_deals as fetch_converse_deals
 from sources.crocs import fetch_deals as fetch_crocs_deals
@@ -145,7 +149,46 @@ def _store_summary(deals: list[Deal], disabled: list[str] | None = None) -> str:
     return ", ".join(f"{store}={count}" for store, count in counts.items())
 
 
+def mirror_to_supabase(
+    deals: list[Deal],
+    delivered: list[ScoredDeal],
+    qualifying: int,
+    new_deals: int,
+    unverified: int,
+    started: float,
+) -> None:
+    """Copy this run's results into Supabase when it is configured. Never fatal:
+    the JSON files stay the source of truth for decisions, so a database outage
+    must not stop alerts."""
+    mirror = SupabaseSync.from_env()
+    if mirror is None:
+        return
+    try:
+        totals = mirror.sync_scan(deals)
+        mirror.record_sent(delivered)
+        mirror.record_run(
+            {
+                "github_run_id": os.environ.get("GITHUB_RUN_ID"),
+                "scanned": len(deals),
+                "new_deals": new_deals,
+                "qualifying": qualifying,
+                "delivered": len(delivered),
+                "unverified": unverified,
+                "per_store": dict(Counter(deal.store for deal in deals)),
+                "duration_seconds": round(time.time() - started, 1),
+            }
+        )
+        print(
+            f"Supabase: {totals['received']} products received, {totals['new']} new, "
+            f"{totals['points']} new price points, {len(delivered)} offers recorded",
+            file=sys.stderr,
+        )
+    except Exception as exc:
+        log_failure("sync", exc)
+
+
 def run() -> int:
+    started = time.time()
     watchlist = load_watchlist()
 
     try:
@@ -207,6 +250,7 @@ def run() -> int:
     # next run retries them.
     mark_seen(SEEN_PATH, seen_keys, sorted(delivered_keys))
     save_price_history(HISTORY_PATH, history)
+    mirror_to_supabase(deals, delivered, len(candidates), len(new_keys), unverified, started)
     return 0
 
 

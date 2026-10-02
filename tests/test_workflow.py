@@ -243,3 +243,78 @@ def test_selftest_includes_one_simulated_big_alert_and_touches_no_state(monkeypa
     assert all("PRUEBA" in offer.reasons[0] for offer in sent[0])
     assert not (tmp_path / "seen_items.json").exists()
     assert not (tmp_path / "price_history.json").exists()
+
+
+class FakeMirror:
+    def __init__(self, fail=False):
+        self.fail = fail
+        self.scans, self.sent, self.runs = [], [], []
+
+    def sync_scan(self, deals):
+        if self.fail:
+            raise RuntimeError("supabase down")
+        self.scans.append(list(deals))
+        return {"received": len(deals), "new": 1, "updated": 1, "points": 1}
+
+    def record_sent(self, offers):
+        self.sent.append(list(offers))
+
+    def record_run(self, stats):
+        self.runs.append(stats)
+
+
+def _history_with_drop(tmp_path):
+    (tmp_path / "price_history.json").write_text(
+        json.dumps({"sodimac:1": [{"date": "2026-09-20", "price": 9990}]}), encoding="utf-8"
+    )
+
+
+def test_run_mirrors_scan_delivered_offers_and_run_stats_to_supabase(monkeypatch, tmp_path):
+    _patch_paths(monkeypatch, tmp_path)
+    _history_with_drop(tmp_path)
+    _stub_all_sources(monkeypatch, fetch_sodimac_deals=lambda watchlist: [make_deal("sodimac:1", 5000)])
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: scored)
+    mirror = FakeMirror()
+    monkeypatch.setattr(main_fast.SupabaseSync, "from_env", classmethod(lambda cls: mirror))
+
+    assert main_fast.run() == 0
+
+    assert [d.id for d in mirror.scans[0]] == ["sodimac:1"]
+    assert [o.deal.id for o in mirror.sent[0]] == ["sodimac:1"]
+    stats = mirror.runs[0]
+    assert stats["scanned"] == 1 and stats["qualifying"] == 1 and stats["delivered"] == 1
+    assert stats["per_store"] == {"sodimac": 1}
+    assert stats["duration_seconds"] >= 0
+
+
+def test_a_supabase_outage_never_fails_the_run_or_loses_json_state(monkeypatch, tmp_path):
+    _patch_paths(monkeypatch, tmp_path)
+    _history_with_drop(tmp_path)
+    _stub_all_sources(monkeypatch, fetch_sodimac_deals=lambda watchlist: [make_deal("sodimac:1", 5000)])
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: scored)
+    monkeypatch.setattr(main_fast.SupabaseSync, "from_env", classmethod(lambda cls: FakeMirror(fail=True)))
+
+    assert main_fast.run() == 0
+
+    seen = json.loads((tmp_path / "seen_items.json").read_text(encoding="utf-8"))
+    assert seen == ["sodimac:1:5000"]
+
+
+def test_run_without_supabase_configuration_just_skips_the_mirror(monkeypatch, tmp_path):
+    _patch_paths(monkeypatch, tmp_path)
+    _stub_all_sources(monkeypatch)
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
+    assert main_fast.run() == 0
+
+
+def test_mirror_is_skipped_when_telegram_delivery_fails_entirely(monkeypatch, tmp_path):
+    _patch_paths(monkeypatch, tmp_path)
+    _history_with_drop(tmp_path)
+    _stub_all_sources(monkeypatch, fetch_sodimac_deals=lambda watchlist: [make_deal("sodimac:1", 5000)])
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: [])
+    mirror = FakeMirror()
+    monkeypatch.setattr(main_fast.SupabaseSync, "from_env", classmethod(lambda cls: mirror))
+
+    assert main_fast.run() == 1
+    assert mirror.scans == []          # JSON state was not saved either, so both stay aligned
