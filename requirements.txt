@@ -1,6 +1,7 @@
 requests==2.32.3
 beautifulsoup4==4.12.3
 playwright==1.47.0
+patchright==1.63.0
 pytest==8.3.3
 python-dotenv==1.0.1
 PyYAML==6.0.2

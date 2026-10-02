@@ -42,11 +42,15 @@ jobs:
         run: pip install -r requirements.txt
 
       # Falabella, Sodimac and Hites are read over plain HTTP. Chromium (~4 min
-      # to install) is only needed by Paris/Ripley/Tottus, which are paused in
-      # config/watchlist.json. Set repo variable INSTALL_BROWSER=true to re-enable.
-      - name: Install Playwright chromium
+      # to install) is only needed by the browser stores (Paris/Ripley/Tottus and
+      # the shoe brands). Nike is behind Cloudflare and only renders with
+      # patchright, so that browser is installed too. Set the repo variable
+      # INSTALL_BROWSER=true to enable.
+      - name: Install browsers
         if: ${{ vars.INSTALL_BROWSER == 'true' }}
-        run: playwright install --with-deps chromium
+        run: |
+          playwright install --with-deps chromium
+          patchright install chromium
 
       - name: Run pipeline
         env:

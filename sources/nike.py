@@ -1,11 +1,13 @@
 # sources/nike.py
 """Nike Chile (nike.cl) browser scraper.
 
-The store is VTEX behind a bot wall: a plain ``requests`` GET of the catalogue
-API is answered with 403, but headless Chromium renders the full-text search
-route ``/_q/{query}?map=ft`` with real product cards. Prices are CLP in the
-``sellingPrice`` element and the crossed-out ``listPrice`` only exists for
-discounted products.
+The store is VTEX behind a Cloudflare bot wall: a plain ``requests`` GET gets
+403, and even stock headless Chromium is answered with "Attention Required!"
+from a datacenter IP. Patchright (a stealth-patched Playwright drop-in) renders
+the full-text search route ``/_q/{query}?map=ft`` with real product cards, so
+this module imports from ``patchright`` instead of ``playwright``. Prices are
+CLP in the ``sellingPrice`` element and the crossed-out ``listPrice`` only
+exists for discounted products.
 """
 import os
 import re
@@ -14,7 +16,7 @@ from datetime import datetime, timezone
 from urllib.parse import quote, urlsplit
 
 from bs4 import BeautifulSoup
-from playwright.sync_api import sync_playwright
+from patchright.sync_api import sync_playwright
 
 from models import Deal
 from sources.images import pick_image, scroll_to_load
