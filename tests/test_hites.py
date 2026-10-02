@@ -54,3 +54,36 @@ def test_parse_html_raises_when_no_product_cards_found():
     html = "<html><head><title>Hites</title></head><body>no products here</body></html>"
     with pytest.raises(RuntimeError):
         parse_html(html, category="taladro")
+
+
+def test_fetch_deals_paginates_with_start_offsets_and_stops_when_a_page_adds_nothing(monkeypatch):
+    from sources import hites
+
+    html = (Path(__file__).parent / "fixtures" / "hites_sample.html").read_text(encoding="utf-8")
+    starts = []
+
+    def fake_fetch_html(query, start=0):
+        starts.append((query, start))
+        return html  # identical every time: page 2 adds nothing new
+
+    monkeypatch.setattr(hites, "fetch_html", fake_fetch_html)
+    monkeypatch.setattr(hites, "PAGE_SIZE", 1)  # fixture holds >1 product, so a "full" page
+    monkeypatch.setattr(hites.time, "sleep", lambda s: None)
+
+    deals = hites.fetch_deals({"keywords": ["notebook"], "scan": {"max_hites_pages": 5}})
+
+    assert starts == [("notebook", 0), ("notebook", 1)]
+    assert deals
+
+
+def test_fetch_deals_includes_extra_hites_queries_without_duplicates(monkeypatch):
+    from sources import hites
+
+    html = (Path(__file__).parent / "fixtures" / "hites_sample.html").read_text(encoding="utf-8")
+    queried = []
+    monkeypatch.setattr(hites, "fetch_html", lambda q, start=0: queried.append(q) or html)
+    monkeypatch.setattr(hites.time, "sleep", lambda s: None)
+
+    hites.fetch_deals({"keywords": ["notebook"], "scan": {"hites_queries": ["notebook", "televisor"]}})
+
+    assert sorted(set(queried)) == ["notebook", "televisor"]

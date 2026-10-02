@@ -1,6 +1,7 @@
 # main_fast.py
 import json
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -54,14 +55,24 @@ def fetch_all_deals(watchlist: dict) -> list[Deal]:
     if not source_fetchers:
         raise RuntimeError("Every store is disabled in config/watchlist.json")
 
+    def run_source(source):
+        name, fetch = source
+        try:
+            return name, fetch(watchlist), None
+        except Exception as exc:
+            return name, [], exc
+
+    # Stores are independent and network-bound: scan them at the same time.
+    with ThreadPoolExecutor(max_workers=len(source_fetchers)) as pool:
+        outcomes = list(pool.map(run_source, source_fetchers))
+
     deals: list[Deal] = []
     failures = 0
-    for name, fetch in source_fetchers:
-        try:
-            deals.extend(fetch(watchlist))
-        except Exception as exc:
+    for name, found, error in outcomes:
+        if error is not None:
             failures += 1
-            print(f"{name} scraper failed: {exc}", file=sys.stderr)
+            print(f"{name} scraper failed: {error}", file=sys.stderr)
+        deals.extend(found)
 
     if failures == len(source_fetchers):
         raise RuntimeError("All fast-tier sources failed to fetch deals")
@@ -128,8 +139,11 @@ def run() -> int:
         print("Notification failed: no offer could be delivered to Telegram", file=sys.stderr)
         return 1
 
-    # Offers that failed to send stay unseen so the next run retries them.
-    mark_seen(SEEN_PATH, seen_keys, [key for key in new_keys if key not in pending_keys])
+    # Only delivered offers are remembered: with thousands of products per scan,
+    # recording every non-qualifying one would bloat the file for no benefit
+    # (they are cheap to re-evaluate). Undelivered offers stay unseen so the
+    # next run retries them.
+    mark_seen(SEEN_PATH, seen_keys, sorted(delivered_keys))
     save_price_history(HISTORY_PATH, history)
     return 0
 

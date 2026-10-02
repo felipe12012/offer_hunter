@@ -24,4 +24,4 @@ def update_price_history(history: dict, deal: Deal) -> None:
 
 def save_price_history(path: Path, history: dict) -> None:
     with path.open("w", encoding="utf-8") as f:
-        json.dump(history, f, indent=2)
+        json.dump(history, f, separators=(",", ":"), sort_keys=True)

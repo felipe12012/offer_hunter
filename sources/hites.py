@@ -1,22 +1,33 @@
 # sources/hites.py
-import os
 import re
+import time
 import sys
 from datetime import datetime, timezone
 from urllib.parse import quote
 
+import requests
 from bs4 import BeautifulSoup
-from playwright.sync_api import sync_playwright
 
 from models import Deal
-from sources.images import pick_image, scroll_to_load
+from sources.images import pick_image
 
-SEARCH_URL = "https://www.hites.com/busqueda?q={query}"
+GRID_URL = (
+    "https://www.hites.com/on/demandware.store/Sites-HITES-Site/default/"
+    "Search-UpdateGrid?q={query}&start={start}&sz={size}"
+)
+PAGE_SIZE = 48
+DEFAULT_MAX_PAGES = 5
+REQUEST_DELAY_SECONDS = 0.3
 BASE_URL = "https://www.hites.com"
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 )
+REQUEST_HEADERS = {
+    "User-Agent": USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "es-CL,es;q=0.9,en;q=0.8",
+}
 
 
 def _parse_price(text: str) -> int:
@@ -89,44 +100,51 @@ def parse_html(html: str, category: str) -> list[Deal]:
             deals.append(deal)
     return deals
 
-
-def fetch_html(keyword: str) -> str:
-    url = SEARCH_URL.format(query=quote(keyword))
-    with sync_playwright() as p:
-        proxy = os.environ.get("SCRAPER_PROXY")
-        browser = p.chromium.launch(
-            headless=True, proxy={"server": proxy} if proxy else None
-        )
-        context = browser.new_context(
-            user_agent=USER_AGENT,
-            viewport={"width": 1366, "height": 768},
-            locale="es-CL",
-            timezone_id="America/Santiago",
-        )
-        page = context.new_page()
-        page.goto(url, timeout=30000, wait_until="domcontentloaded")
+def fetch_html(keyword: str, start: int = 0) -> str:
+    """One page (48 products) of Hites' own grid endpoint; plain HTTP, no browser."""
+    url = GRID_URL.format(query=quote(keyword), start=start, size=PAGE_SIZE)
+    last_error: Exception | None = None
+    for attempt in range(3):
         try:
-            page.wait_for_selector(".product-tile", timeout=15000)
-        except Exception:
-            pass
-        scroll_to_load(page)
-        html = page.content()
-        browser.close()
-    return html
+            response = requests.get(url, headers=REQUEST_HEADERS, timeout=30)
+            response.raise_for_status()
+            return response.text
+        except requests.RequestException as exc:
+            last_error = exc
+            time.sleep(1 + attempt)
+    raise RuntimeError(f"GET {url} failed: {last_error}")
+
+
+def _scan_query(query: str, max_pages: int) -> list[Deal]:
+    deals: dict[str, Deal] = {}
+    for page in range(max_pages):
+        if page:
+            time.sleep(REQUEST_DELAY_SECONDS)
+        found = parse_html(fetch_html(query, page * PAGE_SIZE), category=query)
+        new = [deal for deal in found if deal.id not in deals]
+        for deal in new:
+            deals[deal.id] = deal
+        if len(found) < PAGE_SIZE or not new:
+            break
+    return list(deals.values())
 
 
 def fetch_deals(watchlist: dict) -> list[Deal]:
-    deals: list[Deal] = []
-    keywords = watchlist.get("keywords", [])
+    scan = watchlist.get("scan", {})
+    max_pages = scan.get("max_hites_pages", DEFAULT_MAX_PAGES)
+    queries = list(dict.fromkeys([*watchlist.get("keywords", []), *scan.get("hites_queries", [])]))
+
+    deals: dict[str, Deal] = {}
     failures = 0
-    for keyword in keywords:
-        # One keyword can resolve to a product/category page with no grid —
-        # isolate it instead of letting it abort every other keyword.
+    for query in queries:
+        # One query can resolve to a page with no grid — isolate it instead of
+        # letting it abort every other query.
         try:
-            deals.extend(parse_html(fetch_html(keyword), category=keyword))
+            for deal in _scan_query(query, max_pages):
+                deals.setdefault(deal.id, deal)
         except Exception as exc:
             failures += 1
-            print(f"hites keyword {keyword!r} failed: {exc}", file=sys.stderr)
-    if keywords and failures == len(keywords):
-        raise RuntimeError("All Hites keywords failed")
-    return deals
+            print(f"hites query {query!r} failed: {exc}", file=sys.stderr)
+    if queries and failures == len(queries):
+        raise RuntimeError("All Hites queries failed")
+    return list(deals.values())

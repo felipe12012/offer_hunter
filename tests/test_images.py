@@ -9,15 +9,12 @@ from pathlib import Path
 import pytest
 from bs4 import BeautifulSoup
 
-from sources import falabella, hites, paris, ripley, sodimac, tottus
+from sources import hites, paris, ripley, tottus
 from sources.images import pick_image
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
 PARSERS = {
-    "sodimac": (sodimac.parse_html, "sodimac_images_sample.html"),
-    "sodimac_pod": (sodimac.parse_html, "sodimac_pod_images_sample.html"),
-    "falabella": (falabella.parse_html, "falabella_images_sample.html"),
     "hites": (hites.parse_html, "hites_images_sample.html"),
     "paris": (paris.parse_html, "paris_images_sample.html"),
     "ripley": (ripley.parse_html, "ripley_images_sample.html"),

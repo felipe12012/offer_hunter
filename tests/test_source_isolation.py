@@ -6,10 +6,9 @@ import pytest
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
-# store slug -> its sanitized sample fixture
+# HTML-scraped stores -> sanitized sample fixture (Falabella/Sodimac are covered
+# in test_nextdata.py: they share the JSON scanner)
 STORES = {
-    "sodimac": "sodimac_sample.html",
-    "falabella": "falabella_sample.html",
     "paris": "paris_sample.html",
     "ripley": "ripley_sample.html",
     "tottus": "tottus_sample.html",
@@ -25,7 +24,7 @@ def test_a_failing_keyword_does_not_abort_the_other_keywords(monkeypatch, store,
     module = importlib.import_module(f"sources.{store}")
     good_html = (FIXTURES / fixture_name).read_text(encoding="utf-8")
 
-    def fake_fetch_html(keyword: str) -> str:
+    def fake_fetch_html(keyword: str, start: int = 0) -> str:
         if keyword == "bad":
             raise RuntimeError("search resolved to a page with no product grid")
         return good_html
@@ -41,7 +40,7 @@ def test_a_failing_keyword_does_not_abort_the_other_keywords(monkeypatch, store,
 def test_every_keyword_failing_raises_so_a_dead_store_is_visible(monkeypatch, store):
     module = importlib.import_module(f"sources.{store}")
 
-    def boom(keyword: str) -> str:
+    def boom(keyword: str, start: int = 0) -> str:
         raise RuntimeError("site down")
 
     monkeypatch.setattr(module, "fetch_html", boom)

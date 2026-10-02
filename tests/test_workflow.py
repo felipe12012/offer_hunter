@@ -62,7 +62,7 @@ def test_run_sends_digest_and_persists_state(monkeypatch, tmp_path):
     assert exit_code == 0
     assert "offers" not in sent  # nothing qualified (no history yet), so nothing is sent
     seen = json.loads((tmp_path / "seen_items.json").read_text(encoding="utf-8"))
-    assert seen == ["sodimac:1:5000"]
+    assert seen == []  # nothing was delivered, so nothing is remembered as seen
     history = json.loads((tmp_path / "price_history.json").read_text(encoding="utf-8"))
     assert history["sodimac:1"] == [{"date": "2026-10-01", "price": 5000}]
 

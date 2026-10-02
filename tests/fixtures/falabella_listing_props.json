@@ -1,0 +1,190 @@
+{
+ "results": [
+  {
+   "productId": "80726514",
+   "displayName": "Notebook Gamer Victus 15-fa2009la Intel Core i5 8 GB RAM NVIDIA GeForce RTX 3050 512 GB SSD 15.6\" FHD 144 Hz",
+   "brand": "HP",
+   "url": "https://www.falabella.com/falabella-cl/product/80726514/notebook-gamer-hp-13-3-victus-ci5-8g-512g-rtx3050",
+   "mediaUrls": [
+    "https://media.falabella.com/falabellaCL/80726514_01/public",
+    "https://media.falabella.com/falabellaCL/80726514_1/public",
+    "https://media.falabella.com/falabellaCL/80726514_2/public",
+    "https://media.falabella.com/falabellaCL/80726514_3/public",
+    "https://media.falabella.com/falabellaCL/80726514_4/public"
+   ],
+   "discountBadge": {
+    "label": "-35%",
+    "styles": {
+     "backgroundColor": "#EB0029",
+     "textColor": "#ffffff"
+    }
+   },
+   "prices": [
+    {
+     "label": "",
+     "icons": "cmr-icon",
+     "symbol": "$ ",
+     "type": "cmrPrice",
+     "crossed": false,
+     "price": [
+      "699.990"
+     ]
+    },
+    {
+     "label": "",
+     "icons": "",
+     "symbol": "$ ",
+     "type": "internetPrice",
+     "crossed": false,
+     "price": [
+      "719.990"
+     ]
+    },
+    {
+     "label": "",
+     "icons": "",
+     "symbol": "$ ",
+     "type": "normalPrice",
+     "crossed": true,
+     "price": [
+      "1.069.990"
+     ]
+    }
+   ],
+   "sellerName": "Falabella",
+   "isSponsored": true
+  },
+  {
+   "productId": "80725441",
+   "displayName": "MacBook Neo 13\" (Chip A18 Pro (6n CPU, 5n GPU), 8GB RAM)",
+   "brand": "APPLE",
+   "url": "https://www.falabella.com/falabella-cl/product/80725441/macbook-neo-13-chip-a18-pro-6n-cpu-5n-gpu-8gb-ram",
+   "mediaUrls": [
+    "https://media.falabella.com/falabellaCL/80725445_1/public",
+    "https://media.falabella.com/falabellaCL/80725445_2/public",
+    "https://media.falabella.com/falabellaCL/80725445_3/public",
+    "https://media.falabella.com/falabellaCL/80725445_4/public"
+   ],
+   "prices": [
+    {
+     "label": "",
+     "icons": "cmr-icon",
+     "symbol": "$ ",
+     "type": "cmrPrice",
+     "crossed": false,
+     "price": [
+      "799.990",
+      "899.990"
+     ]
+    },
+    {
+     "label": "",
+     "icons": "",
+     "symbol": "$ ",
+     "type": "internetPrice",
+     "crossed": false,
+     "price": [
+      "819.990",
+      "919.990"
+     ]
+    },
+    {
+     "label": "",
+     "icons": "",
+     "symbol": "$ ",
+     "type": "normalPrice",
+     "crossed": true,
+     "price": [
+      "869.990",
+      "979.990"
+     ]
+    }
+   ],
+   "sellerName": "Falabella",
+   "isSponsored": false
+  },
+  {
+   "productId": "142403285",
+   "displayName": "Audífonos Clip TA140 TWS Bluetooth 5.4",
+   "brand": "LENOVO",
+   "url": "https://www.falabella.com/falabella-cl/product/142403285/audifonos-lenovo-clip-ta140-tws-bluetooth-5-4",
+   "mediaUrls": [
+    "https://media.falabella.com/falabellaCL/151118202_01/public"
+   ],
+   "discountBadge": {
+    "label": "-38%",
+    "styles": {
+     "backgroundColor": "#EB0029",
+     "textColor": "#ffffff"
+    }
+   },
+   "prices": [
+    {
+     "label": "",
+     "icons": "cmr-icon",
+     "symbol": "$ ",
+     "type": "cmrPrice",
+     "crossed": false,
+     "price": [
+      "17.990"
+     ]
+    },
+    {
+     "label": "",
+     "icons": "",
+     "symbol": "$ ",
+     "type": "eventPrice",
+     "crossed": false,
+     "price": [
+      "18.990"
+     ]
+    },
+    {
+     "label": "",
+     "icons": "",
+     "symbol": "$ ",
+     "type": "normalPrice",
+     "crossed": true,
+     "price": [
+      "28.988"
+     ]
+    }
+   ],
+   "sellerName": "Water. Cl",
+   "isSponsored": true
+  },
+  {
+   "productId": "17256548",
+   "displayName": "Kit Standard 4X - ACTIVACIÓN EXCLUSIVA EN CHILE",
+   "brand": "STARLINK",
+   "url": "https://www.falabella.com/falabella-cl/product/17256548/Kit-Standardv4-Starlink",
+   "mediaUrls": [
+    "https://media.falabella.com/falabellaCL/17256548_1/public",
+    "https://media.falabella.com/falabellaCL/17256548_2/public",
+    "https://media.falabella.com/falabellaCL/17256548_3/public",
+    "https://media.falabella.com/falabellaCL/17256548_4/public"
+   ],
+   "prices": [
+    {
+     "label": "",
+     "icons": "",
+     "symbol": "$ ",
+     "type": "internetPrice",
+     "crossed": false,
+     "price": [
+      "336.990"
+     ]
+    }
+   ],
+   "sellerName": "Falabella",
+   "isSponsored": false
+  }
+ ],
+ "pagination": {
+  "count": 49453,
+  "perPage": 48,
+  "totalPerPage": 63,
+  "currentPage": 1
+ },
+ "currentUrl": "/falabella-cl/category/cat40052/Computadores"
+}

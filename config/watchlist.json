@@ -10,7 +10,8 @@
     "notebook",
     "alimento perro",
     "sillon",
-    "taladro"
+    "taladro",
+    "sony"
   ],
   "min_discount_pct": 30,
   "min_real_discount_pct": 15,
@@ -18,5 +19,67 @@
     "paris",
     "ripley",
     "tottus"
-  ]
+  ],
+  "scan": {
+    "max_search_pages": 3,
+    "max_category_pages": 4,
+    "max_categories": 80,
+    "category_patterns": {
+      "tecnologia": [
+        "notebook",
+        "computador",
+        "laptop",
+        "tablet",
+        "smartphone",
+        "celular",
+        "audifono",
+        "parlante",
+        "smart-tv",
+        "tv-y-video",
+        "consola",
+        "videojuego",
+        "monitores",
+        "impresora",
+        "smartwatch",
+        "camaras"
+      ],
+      "muebles": [
+        "sofa",
+        "sillon",
+        "comedor",
+        "living",
+        "muebles-de",
+        "escritorio",
+        "closet",
+        "velador",
+        "rack",
+        "camas",
+        "colchon"
+      ],
+      "mascotas": [
+        "mascota",
+        "perro",
+        "gato"
+      ],
+      "herramientas": [
+        "taladro",
+        "herramientas-electricas"
+      ]
+    },
+    "max_hites_pages": 4,
+    "hites_queries": [
+      "televisor",
+      "smart tv",
+      "celular",
+      "tablet",
+      "parlante",
+      "consola",
+      "sofa",
+      "cama",
+      "colchon",
+      "escritorio",
+      "comedor",
+      "perro"
+    ]
+  }
 }
