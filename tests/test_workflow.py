@@ -190,3 +190,35 @@ def test_disabled_stores_are_not_fetched(monkeypatch, tmp_path):
     assert "fetch_paris_deals" not in called
     assert "fetch_ripley_deals" not in called
     assert "fetch_sodimac_deals" in called
+
+
+def test_same_marketplace_product_on_two_stores_is_sent_once_but_remembered_for_both(monkeypatch, tmp_path):
+    _patch_paths(monkeypatch, tmp_path)
+    (tmp_path / "price_history.json").write_text(
+        json.dumps({
+            "falabella:777": [{"date": "2026-09-20", "price": 9990}],
+            "sodimac:777": [{"date": "2026-09-20", "price": 9990}],
+        }),
+        encoding="utf-8",
+    )
+
+    def deal_for(store):
+        return Deal(
+            id=f"{store}:777", title="Seccional", url=f"https://www.{store}.cl/p/777", store=store,
+            category="herramientas", price=5000, list_price=5000, discount_pct=0.0,
+            scraped_at="2026-10-01T12:00:00+00:00", image_url="https://img.example/p.jpg",
+        )
+
+    _stub_all_sources(
+        monkeypatch,
+        fetch_falabella_deals=lambda watchlist: [deal_for("falabella")],
+        fetch_sodimac_deals=lambda watchlist: [deal_for("sodimac")],
+    )
+    sent = []
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored: sent.append(list(scored)) or scored)
+
+    assert main_fast.run() == 0
+
+    assert len(sent) == 1 and len(sent[0]) == 1          # one message, not two
+    seen = json.loads((tmp_path / "seen_items.json").read_text(encoding="utf-8"))
+    assert sorted(seen) == ["falabella:777:5000", "sodimac:777:5000"]  # neither is re-sent next run

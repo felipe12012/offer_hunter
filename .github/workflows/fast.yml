@@ -35,7 +35,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # Falabella, Sodimac and Hites are read over plain HTTP. Chromium (~4 min
+      # to install) is only needed by Paris/Ripley/Tottus, which are paused in
+      # config/watchlist.json. Set repo variable INSTALL_BROWSER=true to re-enable.
       - name: Install Playwright chromium
+        if: ${{ vars.INSTALL_BROWSER == 'true' }}
         run: playwright install --with-deps chromium
 
       - name: Run pipeline

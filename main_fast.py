@@ -80,6 +80,23 @@ def fetch_all_deals(watchlist: dict) -> list[Deal]:
     return deals
 
 
+def dedupe_cross_store(candidates: list[ScoredDeal]) -> tuple[list[ScoredDeal], dict[str, list[str]]]:
+    """Falabella and Sodimac share a marketplace catalogue, so one product can
+    qualify on both at the same price. Keep one offer per (product id, price)
+    and remember the other stores' keys so they are not re-sent next run."""
+    unique: dict[tuple[str, int], ScoredDeal] = {}
+    aliases: dict[str, list[str]] = {}
+    for scored in candidates:
+        identity = (scored.deal.id.split(":", 1)[-1], scored.deal.price)
+        key = deal_key(scored.deal)
+        if identity in unique:
+            aliases[deal_key(unique[identity].deal)].append(key)
+        else:
+            unique[identity] = scored
+            aliases[key] = []
+    return list(unique.values()), aliases
+
+
 def _store_summary(deals: list[Deal], disabled: list[str] | None = None) -> str:
     skipped = {name.lower() for name in disabled or []}
     counts = {store: 0 for store, _attr in SOURCE_FETCHERS if store not in skipped}
@@ -119,8 +136,13 @@ def run() -> int:
         if scored:
             candidates.append(scored)
 
+    candidates, aliases = dedupe_cross_store(candidates)
     delivered = send_offers(candidates) if candidates else []
-    delivered_keys = {deal_key(scored.deal) for scored in delivered}
+    delivered_keys: set[str] = set()
+    for scored in delivered:
+        key = deal_key(scored.deal)
+        delivered_keys.add(key)
+        delivered_keys.update(aliases.get(key, []))
     pending_keys = {deal_key(scored.deal) for scored in candidates} - delivered_keys
 
     print(f"Deals per store: {_store_summary(deals, watchlist.get("disabled_stores"))}", file=sys.stderr)
