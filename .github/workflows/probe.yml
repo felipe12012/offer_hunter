@@ -1,4 +1,4 @@
-name: Probe Free Unblock
+name: Probe Tottus Free
 
 on:
   workflow_dispatch: {}
@@ -10,36 +10,27 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: curl_cffi probe
+      - name: Tottus via curl_cffi parse
         run: |
-          pip install curl_cffi
+          pip install curl_cffi beautifulsoup4
           python - <<'PY'
           from curl_cffi import requests as creq
+          from bs4 import BeautifulSoup
 
-          TARGETS = [
-              ("nike-vtex-api", "https://www.nike.cl/api/catalog_system/pub/products/search?ft=zapatillas&_from=0&_to=2"),
-              ("nike-search", "https://www.nike.cl/_q/zapatillas?map=ft"),
-              ("adidas-home", "https://www.adidas.cl/"),
-              ("paris-search", "https://www.paris.cl/search?q=zapatillas"),
-              ("ripley-search", "https://simple.ripley.cl/search/zapatillas"),
-              ("tottus-search", "https://www.tottus.cl/tottus-cl/buscar?Ntt=zapatillas"),
-          ]
-          for name, url in TARGETS:
-              try:
-                  r = creq.get(url, impersonate="chrome", timeout=40)
-                  body = r.text
-                  extra = ""
-                  if "api/catalog" in url:
-                      try:
-                          extra = f" products={len(r.json())}"
-                      except Exception:
-                          extra = " non-json"
-                  marker = "cloudflare-challenge" if ("Attention Required" in body or "Just a moment" in body) else ""
-                  print(f"CURL {name} -> {r.status_code}{extra} len={len(body)} {marker}")
-              except Exception as e:
-                  print(f"CURL {name} -> ERROR {type(e).__name__}: {str(e)[:70]}")
+          url = "https://www.tottus.cl/tottus-cl/buscar?Ntt=zapatillas"
+          r = creq.get(url, impersonate="chrome", timeout=40)
+          print(f"TOTTUS curl status={r.status_code} len={len(r.text)}")
+          soup = BeautifulSoup(r.text, "html.parser")
+          cards = soup.select('[data-testid="ssr-pod"]')
+          links = soup.select('a.pod-link[href]')
+          nonempty = [a for a in links if (a.get("href") or "").strip()]
+          titles = [a.get("href") for a in nonempty[:3]]
+          print(f"cards={len(cards)} pod-links={len(links)} nonempty-href={len(nonempty)}")
+          print("sample hrefs:", titles)
+          # also inspect the JSON-next shape sometimes embedded
+          print("has __NEXT_DATA__:", "__NEXT_DATA__" in r.text)
           PY
-      - name: patchright probe
+      - name: Tottus + Ripley via patchright
         run: |
           pip install patchright
           patchright install chromium >/dev/null 2>&1 || true
@@ -49,9 +40,8 @@ jobs:
           UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                 "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
           TARGETS = [
-              ("nike", "https://www.nike.cl/_q/zapatillas?map=ft", "section[class*=product-summary]"),
-              ("adidas", "https://www.adidas.cl/", "div[class*=product]"),
-              ("paris", "https://www.paris.cl/search?q=zapatillas", '[data-testid="paris-vertical-pod"]'),
+              ("tottus", "https://www.tottus.cl/tottus-cl/buscar?Ntt=zapatillas", '[data-testid="ssr-pod"]'),
+              ("ripley", "https://simple.ripley.cl/search/zapatillas", "a.product-link"),
           ]
           with sync_playwright() as p:
               browser = p.chromium.launch(headless=True)
@@ -61,11 +51,10 @@ jobs:
                   try:
                       resp = page.goto(url, wait_until="domcontentloaded", timeout=45000)
                       page.wait_for_timeout(6000)
-                      title = page.title()[:60]
                       cards = page.query_selector_all(selector)
-                      print(f"PATCHRIGHT {name} -> status={resp.status if resp else None} title={title!r} cards={len(cards)}")
+                      print(f"PATCHRIGHT {name} -> status={resp.status if resp else None} title={page.title()[:55]!r} cards={len(cards)}")
                   except Exception as e:
-                      print(f"PATCHRIGHT {name} -> ERROR {type(e).__name__}: {str(e)[:70]}")
+                      print(f"PATCHRIGHT {name} -> ERROR {type(e).__name__}: {str(e)[:60]}")
                   finally:
                       ctx.close()
               browser.close()
