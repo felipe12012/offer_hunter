@@ -10,6 +10,10 @@ from models import Deal
 
 SEARCH_URL = "https://www.sodimac.cl/sodimac-cl/search?Ntt={query}"
 BASE_URL = "https://www.sodimac.cl"
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+)
 
 
 def _parse_price(text: str) -> int:
@@ -56,9 +60,11 @@ def parse_html(html: str, category: str) -> list[Deal]:
     soup = BeautifulSoup(html, "html.parser")
     cards = soup.select(".product-wrapper")
     if not cards:
+        title = soup.title.get_text(strip=True) if soup.title else "<no title>"
         raise RuntimeError(
             "No product cards found on Sodimac search results page; "
-            "the site may be unreachable or its HTML structure may have changed"
+            "the site may be unreachable or its HTML structure may have changed "
+            f"(page title={title!r}, html length={len(html)})"
         )
 
     deals: list[Deal] = []
@@ -75,9 +81,18 @@ def fetch_html(keyword: str) -> str:
     url = SEARCH_URL.format(query=quote(keyword))
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        page.goto(url, timeout=15000)
-        page.wait_for_timeout(1500)
+        context = browser.new_context(
+            user_agent=USER_AGENT,
+            viewport={"width": 1366, "height": 768},
+            locale="es-CL",
+            timezone_id="America/Santiago",
+        )
+        page = context.new_page()
+        page.goto(url, timeout=30000, wait_until="domcontentloaded")
+        try:
+            page.wait_for_selector(".product-wrapper", timeout=15000)
+        except Exception:
+            pass
         html = page.content()
         browser.close()
     return html
