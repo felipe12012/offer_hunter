@@ -10,7 +10,25 @@ from dedup import deal_key, load_seen, mark_seen
 from models import Deal
 from notifier import send_digest
 from price_history import load_price_history, save_price_history, update_price_history
+from sources.falabella import fetch_deals as fetch_falabella_deals
+from sources.hites import fetch_deals as fetch_hites_deals
+from sources.paris import fetch_deals as fetch_paris_deals
+from sources.ripley import fetch_deals as fetch_ripley_deals
 from sources.sodimac import fetch_deals as fetch_sodimac_deals
+from sources.tottus import fetch_deals as fetch_tottus_deals
+
+# The single roster of registered sources as (store, module attribute name).
+# The attribute is resolved at call time so tests can monkeypatch
+# main_fast.fetch_<store>_deals and have fetch_all_deals see the replacement.
+SOURCE_FETCHERS = [
+    ("sodimac", "fetch_sodimac_deals"),
+    ("falabella", "fetch_falabella_deals"),
+    ("paris", "fetch_paris_deals"),
+    ("ripley", "fetch_ripley_deals"),
+    ("tottus", "fetch_tottus_deals"),
+    ("hites", "fetch_hites_deals"),
+]
+SOURCE_NAMES = [attr for _store, attr in SOURCE_FETCHERS]
 
 SEEN_PATH = Path(__file__).parent / "data" / "seen_items.json"
 HISTORY_PATH = Path(__file__).parent / "data" / "price_history.json"
@@ -25,12 +43,9 @@ def load_watchlist() -> dict:
 
 
 def fetch_all_deals(watchlist: dict) -> list[Deal]:
-    # Built fresh on every call (not hoisted to module scope) so tests can
-    # monkeypatch main_fast.fetch_sodimac_deals and have this function see
-    # the replacement — same reasoning as job-hunter-agent/main.py.
-    source_fetchers = [
-        ("sodimac", fetch_sodimac_deals),
-    ]
+    # Resolved on every call so a monkeypatched module attribute is picked up —
+    # same reasoning as job-hunter-agent/main.py.
+    source_fetchers = [(store, globals()[attr]) for store, attr in SOURCE_FETCHERS]
 
     deals: list[Deal] = []
     failures = 0

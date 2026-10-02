@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="es-CL">
+<head><title>audifonos | Ripley.com</title></head>
+<body>
+  <div data-testid="search-container">
+    <section class="product-list--container product-list--mobile-horizontal" data-testid="product-list">
+
+      <!-- Product 1: crossed-out (normal) price present -> real discount -->
+      <a class="product-link" href="/audifonos-samsung-tipo-c-2000382046113p?color_80=negro&amp;s=mdco&amp;searchTerm=audifonos">
+        <div class="product-item-mobile-horizontal-wrapper">
+          <article class="product-item-horizontal">
+            <div class="product-item-horizontal__brand-row">
+              <span class="product-item-horizontal__brand">SAMSUNG</span>
+            </div>
+            <p class="product-item-horizontal__name">AUDÍFONOS SAMSUNG TIPO-C</p>
+            <div class="product-item-horizontal__price">
+              <div class="product-price-wrapper">
+                <div class="product-price-old-price-container">
+                  <span class="product-price-old-price product-price-strikethrough">$19.990</span>
+                </div>
+                <div class="product-price-price-container">
+                  <span class="product-price-price product-price-country-cl product-price-no-strikethrough">$12.990</span>
+                  <span class="product-price-discount">- 35 %</span>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </a>
+
+      <!-- Duplicate block of Product 1 (known trap: same SKU rendered twice) -->
+      <a class="product-link" href="/audifonos-samsung-tipo-c-2000382046113p?color_80=negro&amp;s=mdco&amp;searchTerm=audifonos">
+        <div class="product-item-mobile-horizontal-wrapper">
+          <article class="product-item-horizontal">
+            <p class="product-item-horizontal__name">AUDÍFONOS SAMSUNG TIPO-C</p>
+            <div class="product-price-wrapper">
+              <div class="product-price-old-price-container">
+                <span class="product-price-old-price product-price-strikethrough">$19.990</span>
+              </div>
+              <div class="product-price-price-container">
+                <span class="product-price-price product-price-country-cl product-price-no-strikethrough">$12.990</span>
+              </div>
+            </div>
+          </article>
+        </div>
+      </a>
+
+      <!-- Product 2: no crossed-out price -> list_price falls back to price -->
+      <a class="product-link" href="/audifonos-sony-mdrex15lp-negro-2000347231318p?s=mdco&amp;searchTerm=audifonos">
+        <div class="product-item-mobile-horizontal-wrapper">
+          <article class="product-item-horizontal">
+            <p class="product-item-horizontal__name">AUDÍFONOS SONY MDREX15LP NEGRO</p>
+            <div class="product-price-wrapper">
+              <div class="product-price-price-container">
+                <span class="product-price-price product-price-country-cl product-price-no-strikethrough">$6.990</span>
+              </div>
+            </div>
+          </article>
+        </div>
+      </a>
+
+      <!-- Malformed block: no price -> must be skipped, never raise -->
+      <a class="product-link" href="/producto-incompleto-mpm10009999999">
+        <article class="product-item-horizontal">
+          <p class="product-item-horizontal__name">PRODUCTO SIN PRECIO</p>
+        </article>
+      </a>
+
+    </section>
+  </div>
+</body>
+</html>
