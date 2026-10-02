@@ -53,6 +53,8 @@
     "max_search_pages": 3,
     "max_category_pages": 4,
     "max_categories": 80,
+    "max_shopify_pages": 6,
+    "max_vtex_pages": 1,
     "category_patterns": {
       "tecnologia": [
         "notebook",

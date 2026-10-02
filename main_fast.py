@@ -11,12 +11,19 @@ from dedup import deal_key, load_seen, mark_seen
 from models import Deal, ScoredDeal
 from notifier import send_offers
 from price_history import load_price_history, save_price_history, update_price_history
+from sources.asics import fetch_deals as fetch_asics_deals
+from sources.crocs import fetch_deals as fetch_crocs_deals
 from sources.falabella import fetch_deals as fetch_falabella_deals
 from sources.hites import fetch_deals as fetch_hites_deals
+from sources.hushpuppies import fetch_deals as fetch_hushpuppies_deals
+from sources.merrell import fetch_deals as fetch_merrell_deals
 from sources.paris import fetch_deals as fetch_paris_deals
+from sources.reebok import fetch_deals as fetch_reebok_deals
 from sources.ripley import fetch_deals as fetch_ripley_deals
+from sources.salomon import fetch_deals as fetch_salomon_deals
 from sources.sodimac import fetch_deals as fetch_sodimac_deals
 from sources.tottus import fetch_deals as fetch_tottus_deals
+from sources.vans import fetch_deals as fetch_vans_deals
 
 # The single roster of registered sources as (store, module attribute name).
 # The attribute is resolved at call time so tests can monkeypatch
@@ -28,6 +35,13 @@ SOURCE_FETCHERS = [
     ("ripley", "fetch_ripley_deals"),
     ("tottus", "fetch_tottus_deals"),
     ("hites", "fetch_hites_deals"),
+    ("vans", "fetch_vans_deals"),
+    ("crocs", "fetch_crocs_deals"),
+    ("merrell", "fetch_merrell_deals"),
+    ("salomon", "fetch_salomon_deals"),
+    ("hushpuppies", "fetch_hushpuppies_deals"),
+    ("asics", "fetch_asics_deals"),
+    ("reebok", "fetch_reebok_deals"),
 ]
 SOURCE_NAMES = [attr for _store, attr in SOURCE_FETCHERS]
 
