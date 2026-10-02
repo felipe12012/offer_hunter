@@ -1,0 +1,61 @@
+name: Probe Nike Stealth
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: patchright channel=chrome
+        run: |
+          pip install patchright
+          patchright install chromium >/dev/null 2>&1 || true
+          python - <<'PY'
+          from patchright.sync_api import sync_playwright
+
+          UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+          url = "https://www.nike.cl/_q/zapatillas?map=ft"
+          sel = "section.vtex-product-summary-2-x-containerNormal"
+
+          with sync_playwright() as p:
+              for label, kwargs in (("chrome-channel", {"channel": "chrome", "headless": True}),
+                                    ("bundled", {"headless": True})):
+                  for attempt in (1, 2):
+                      try:
+                          browser = p.chromium.launch(**kwargs)
+                          ctx = browser.new_context(user_agent=UA, viewport={"width": 1366, "height": 768},
+                                                    locale="es-CL", timezone_id="America/Santiago")
+                          page = ctx.new_page()
+                          resp = page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                          page.wait_for_timeout(6000)
+                          cards = page.query_selector_all(sel)
+                          print(f"NIKE {label} try{attempt} -> status={resp.status if resp else None} title={page.title()[:45]!r} cards={len(cards)}")
+                          browser.close()
+                      except Exception as e:
+                          print(f"NIKE {label} try{attempt} -> ERROR {type(e).__name__}: {str(e)[:60]}")
+          PY
+      - name: camoufox
+        run: |
+          pip install camoufox[geoip] 2>/dev/null || pip install camoufox
+          python -m camoufox fetch >/dev/null 2>&1 || true
+          python - <<'PY'
+          try:
+              from camoufox.sync_api import Camoufox
+              url = "https://www.nike.cl/_q/zapatillas?map=ft"
+              sel = "section.vtex-product-summary-2-x-containerNormal"
+              with Camoufox(headless=True) as browser:
+                  for attempt in (1, 2):
+                      page = browser.new_page()
+                      resp = page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                      page.wait_for_timeout(6000)
+                      cards = page.query_selector_all(sel)
+                      print(f"NIKE camoufox try{attempt} -> status={resp.status if resp else None} title={page.title()[:45]!r} cards={len(cards)}")
+                      page.close()
+          except Exception as e:
+              print(f"NIKE camoufox -> ERROR {type(e).__name__}: {str(e)[:80]}")
+          PY
