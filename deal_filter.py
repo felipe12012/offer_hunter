@@ -19,6 +19,28 @@ def _historical_min(deal: Deal, history: dict) -> int | None:
     return min(snapshot["price"] for snapshot in snapshots)
 
 
+# A store's "normal price" only counts if we have actually seen the product
+# selling at (roughly) that price before. Otherwise it may be an inflated
+# crossed-out figure shown just to make the sale price look like a bargain.
+LIST_PRICE_TOLERANCE = 0.05
+
+
+def _confirmed_list_price(deal: Deal, history: dict) -> int | None:
+    """Highest price this item was previously seen selling at, if it is within
+    tolerance of the advertised list price; None if the list price is unproven."""
+    snapshots = history.get(deal.id)
+    if not snapshots:
+        return None
+    highest = max(snapshot["price"] for snapshot in snapshots)
+    if highest >= deal.list_price * (1 - LIST_PRICE_TOLERANCE):
+        return highest
+    return None
+
+
+def _format_clp(amount: int) -> str:
+    return f"${amount:,}".replace(",", ".")
+
+
 def evaluate(deal: Deal, watchlist: dict, history: dict) -> ScoredDeal | None:
     if not _matches_watchlist(deal, watchlist):
         return None
@@ -30,8 +52,17 @@ def evaluate(deal: Deal, watchlist: dict, history: dict) -> ScoredDeal | None:
     qualifies = False
 
     if deal.discount_pct >= min_discount_pct:
-        qualifies = True
-        reasons.append(f"-{deal.discount_pct:.0f}% vs precio normal")
+        if watchlist.get("verify_advertised_discount", True):
+            confirmed = _confirmed_list_price(deal, history)
+            if confirmed is not None:
+                qualifies = True
+                reasons.append(
+                    f"-{deal.discount_pct:.0f}% vs precio normal "
+                    f"(confirmado: se vendio a {_format_clp(confirmed)})"
+                )
+        else:
+            qualifies = True
+            reasons.append(f"-{deal.discount_pct:.0f}% vs precio normal")
 
     real_discount_pct = 0.0
     historical_min = _historical_min(deal, history)
@@ -39,7 +70,7 @@ def evaluate(deal: Deal, watchlist: dict, history: dict) -> ScoredDeal | None:
         real_discount_pct = round((historical_min - deal.price) / historical_min * 100, 1)
         if real_discount_pct >= min_real_discount_pct:
             qualifies = True
-            reasons.append(f"-{real_discount_pct:.0f}% vs minimo historico (${historical_min:,})".replace(",", "."))
+            reasons.append(f"-{real_discount_pct:.0f}% vs minimo historico ({_format_clp(historical_min)})")
 
     if not qualifies:
         return None

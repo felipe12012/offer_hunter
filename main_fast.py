@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 
 from deal_filter import evaluate
 from dedup import deal_key, load_seen, mark_seen
-from models import Deal
-from notifier import send_digest
+from models import Deal, ScoredDeal
+from notifier import send_offers
 from price_history import load_price_history, save_price_history, update_price_history
 from sources.falabella import fetch_deals as fetch_falabella_deals
 from sources.hites import fetch_deals as fetch_hites_deals
@@ -62,6 +62,13 @@ def fetch_all_deals(watchlist: dict) -> list[Deal]:
     return deals
 
 
+def _store_summary(deals: list[Deal]) -> str:
+    counts = {store: 0 for store, _attr in SOURCE_FETCHERS}
+    for deal in deals:
+        counts[deal.store] = counts.get(deal.store, 0) + 1
+    return ", ".join(f"{store}={count}" for store, count in counts.items())
+
+
 def run() -> int:
     watchlist = load_watchlist()
 
@@ -73,15 +80,19 @@ def run() -> int:
 
     history = load_price_history(HISTORY_PATH)
     seen_keys = load_seen(SEEN_PATH)
+    unverified_watchlist = {**watchlist, "verify_advertised_discount": False}
 
-    candidates = []
-    new_keys = []
+    candidates: list[ScoredDeal] = []
+    new_keys: list[str] = []
+    unverified = 0
     for deal in deals:
         key = deal_key(deal)
         already_seen = key in seen_keys
         # Evaluate against history BEFORE this run's own snapshot is recorded,
         # so a price drop compares against prior runs, not against itself.
         scored = None if already_seen else evaluate(deal, watchlist, history)
+        if not already_seen and scored is None and evaluate(deal, unverified_watchlist, history):
+            unverified += 1
         update_price_history(history, deal)
         if already_seen:
             continue
@@ -89,21 +100,57 @@ def run() -> int:
         if scored:
             candidates.append(scored)
 
+    delivered = send_offers(candidates) if candidates else []
+    delivered_keys = {deal_key(scored.deal) for scored in delivered}
+    pending_keys = {deal_key(scored.deal) for scored in candidates} - delivered_keys
+
+    print(f"Deals per store: {_store_summary(deals)}", file=sys.stderr)
     print(
-        f"Scanned {len(deals)} deals, {len(new_keys)} new, {len(candidates)} qualifying",
+        f"Scanned {len(deals)} deals, {len(new_keys)} new, {len(candidates)} qualifying, "
+        f"{unverified} advertised discounts discarded as unverified",
         file=sys.stderr,
     )
-    try:
-        sent = send_digest(candidates)
-        print(f"Telegram digest sent: {bool(sent)}", file=sys.stderr)
-    except Exception as exc:
-        print(f"Notification failed: {exc}", file=sys.stderr)
+    print(
+        f"Telegram: delivered {len(delivered)}/{len(candidates)} individual messages "
+        f"({len(pending_keys)} pending retry next run)",
+        file=sys.stderr,
+    )
+
+    if candidates and not delivered:
+        print("Notification failed: no offer could be delivered to Telegram", file=sys.stderr)
         return 1
 
-    mark_seen(SEEN_PATH, seen_keys, new_keys)
+    # Offers that failed to send stay unseen so the next run retries them.
+    mark_seen(SEEN_PATH, seen_keys, [key for key in new_keys if key not in pending_keys])
     save_price_history(HISTORY_PATH, history)
     return 0
 
 
+def selftest(limit: int = 3) -> int:
+    """Send a few real scraped products to Telegram as clearly-labelled test
+    messages, to verify photo + formatting + delivery end to end. Touches no
+    state files and ignores dedup and verification."""
+    watchlist = load_watchlist()
+    deals = [deal for deal in fetch_all_deals(watchlist) if deal.image_url]
+    deals.sort(key=lambda deal: deal.discount_pct, reverse=True)
+
+    picked: list[Deal] = []
+    stores_used: set[str] = set()
+    for deal in deals:
+        if deal.store not in stores_used:
+            stores_used.add(deal.store)
+            picked.append(deal)
+        if len(picked) == limit:
+            break
+
+    offers = [
+        ScoredDeal(deal=deal, real_discount_pct=0.0, reasons=["PRUEBA de envio: no es una oferta verificada"])
+        for deal in picked
+    ]
+    delivered = send_offers(offers)
+    print(f"Selftest: delivered {len(delivered)}/{len(offers)} test messages", file=sys.stderr)
+    return 0 if offers and len(delivered) == len(offers) else 1
+
+
 if __name__ == "__main__":
-    sys.exit(run())
+    sys.exit(selftest() if "--selftest" in sys.argv[1:] else run())

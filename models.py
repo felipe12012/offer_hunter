@@ -12,6 +12,7 @@ class Deal:
     list_price: int
     discount_pct: float
     scraped_at: str
+    image_url: str = ""
 
 
 @dataclass(frozen=True)

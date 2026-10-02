@@ -3,7 +3,12 @@ name: Fast Tier Deal Scan
 on:
   schedule:
     - cron: "*/15 * * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      selftest:
+        description: "Send 3 real scraped products to Telegram as test messages (no state changes)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -42,7 +47,7 @@ jobs:
           # through a clean (ideally Chilean residential) proxy. Format:
           # http://user:pass@host:port  Leave unset to run the other stores directly.
           SCRAPER_PROXY: ${{ secrets.SCRAPER_PROXY }}
-        run: python main_fast.py
+        run: python main_fast.py ${{ inputs.selftest && '--selftest' || '' }}
 
       - name: Commit updated data files
         run: |

@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
 
 from models import Deal
+from sources.images import pick_image, scroll_to_load
 
 SEARCH_URL = "https://www.falabella.com/falabella-cl/search?Ntt={query}"
 BASE_URL = "https://www.falabella.com"
@@ -66,6 +67,7 @@ def _extract_deal(card, category: str) -> Deal | None:
         list_price=list_price,
         discount_pct=discount_pct,
         scraped_at=datetime.now(timezone.utc).isoformat(),
+        image_url=pick_image(card, BASE_URL),
     )
 
 
@@ -109,6 +111,7 @@ def fetch_html(keyword: str) -> str:
             page.wait_for_selector(CARD_SELECTOR, timeout=15000)
         except Exception:
             pass
+        scroll_to_load(page)
         html = page.content()
         browser.close()
     return html

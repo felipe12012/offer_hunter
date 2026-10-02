@@ -32,17 +32,43 @@ def test_rejects_deal_outside_watchlist_categories_and_keywords():
 
 def test_category_and_keyword_matching_is_case_insensitive_substring():
     deal = make_deal(6990, 9990, category="Herramientas Electricas", title="Oferta")
-    # 30% off ($6990 vs $9990) qualifies on list-price discount alone
-    result = evaluate(deal, WATCHLIST, {})
+    # 30% off ($6990 vs $9990) qualifies once history confirms it sold near $9990
+    history = {"sodimac:123": [{"date": "2026-09-01", "price": 9990}]}
+    result = evaluate(deal, WATCHLIST, history)
     assert result is not None
 
 
-def test_qualifies_via_list_price_discount_with_no_history():
+def test_qualifies_via_list_price_discount_when_history_confirms_list_price():
     deal = make_deal(6990, 9990)  # 30.03% off
-    result = evaluate(deal, WATCHLIST, {})
+    history = {"sodimac:123": [{"date": "2026-09-01", "price": 9990}]}
+    result = evaluate(deal, WATCHLIST, history)
     assert result is not None
-    assert result.real_discount_pct == 0.0
-    assert any("precio normal" in reason for reason in result.reasons)
+    assert result.real_discount_pct == 30.0  # also a real drop vs the $9.990 it sold at
+    assert any("precio normal" in reason and "confirmado" in reason for reason in result.reasons)
+
+
+def test_rejects_advertised_discount_with_no_history_as_unverified():
+    deal = make_deal(6990, 9990)  # 30% off, but nothing proves $9990 was ever charged
+    assert evaluate(deal, WATCHLIST, {}) is None
+
+
+def test_rejects_inflated_list_price_never_charged_in_history():
+    # Store now shows "was $20.000, now $12.000" (-40%) but we only ever saw it at ~$12.000.
+    deal = make_deal(12000, 20000)
+    history = {"sodimac:123": [{"date": "2026-09-01", "price": 12500}, {"date": "2026-09-15", "price": 12000}]}
+    assert evaluate(deal, WATCHLIST, history) is None
+
+
+def test_list_price_confirmation_allows_small_tolerance():
+    deal = make_deal(6990, 10000)  # 30.1% off
+    history = {"sodimac:123": [{"date": "2026-09-01", "price": 9600}]}  # within 5% of 10000
+    assert evaluate(deal, WATCHLIST, history) is not None
+
+
+def test_verification_can_be_disabled_in_watchlist():
+    deal = make_deal(6990, 9990)
+    watchlist = {**WATCHLIST, "verify_advertised_discount": False}
+    assert evaluate(deal, watchlist, {}) is not None
 
 
 def test_rejects_when_discount_below_threshold_and_no_history():

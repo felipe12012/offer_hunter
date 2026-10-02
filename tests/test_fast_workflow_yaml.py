@@ -61,3 +61,11 @@ def test_workflow_rebases_before_pushing_data_files():
     content = WORKFLOW_PATH.read_text(encoding="utf-8")
 
     assert "git pull --rebase" in content
+
+
+def test_workflow_dispatch_offers_a_selftest_input():
+    parsed = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
+    inputs = parsed[True]["workflow_dispatch"]["inputs"]
+    assert inputs["selftest"]["type"] == "boolean"
+    run_step = next(step for step in parsed["jobs"]["run-pipeline"]["steps"] if step.get("name") == "Run pipeline")
+    assert "--selftest" in run_step["run"]
