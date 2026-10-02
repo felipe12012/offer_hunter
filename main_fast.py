@@ -12,15 +12,21 @@ from models import Deal, ScoredDeal
 from notifier import send_offers
 from price_history import load_price_history, save_price_history, update_price_history
 from sources.asics import fetch_deals as fetch_asics_deals
+from sources.converse import fetch_deals as fetch_converse_deals
 from sources.crocs import fetch_deals as fetch_crocs_deals
 from sources.falabella import fetch_deals as fetch_falabella_deals
+from sources.fila import fetch_deals as fetch_fila_deals
 from sources.hites import fetch_deals as fetch_hites_deals
 from sources.hushpuppies import fetch_deals as fetch_hushpuppies_deals
 from sources.merrell import fetch_deals as fetch_merrell_deals
+from sources.newbalance import fetch_deals as fetch_newbalance_deals
+from sources.nike import fetch_deals as fetch_nike_deals
 from sources.paris import fetch_deals as fetch_paris_deals
+from sources.puma import fetch_deals as fetch_puma_deals
 from sources.reebok import fetch_deals as fetch_reebok_deals
 from sources.ripley import fetch_deals as fetch_ripley_deals
 from sources.salomon import fetch_deals as fetch_salomon_deals
+from sources.skechers import fetch_deals as fetch_skechers_deals
 from sources.sodimac import fetch_deals as fetch_sodimac_deals
 from sources.tottus import fetch_deals as fetch_tottus_deals
 from sources.vans import fetch_deals as fetch_vans_deals
@@ -42,8 +48,28 @@ SOURCE_FETCHERS = [
     ("hushpuppies", "fetch_hushpuppies_deals"),
     ("asics", "fetch_asics_deals"),
     ("reebok", "fetch_reebok_deals"),
+    ("nike", "fetch_nike_deals"),
+    ("converse", "fetch_converse_deals"),
+    ("puma", "fetch_puma_deals"),
+    ("newbalance", "fetch_newbalance_deals"),
+    ("fila", "fetch_fila_deals"),
+    ("skechers", "fetch_skechers_deals"),
 ]
 SOURCE_NAMES = [attr for _store, attr in SOURCE_FETCHERS]
+
+# Brand stores that need a browser and launch one Chromium per keyword. Handed
+# the full 31-keyword watchlist they would pay ~30 browser launches each, so
+# they get only footwear queries; the store's own catalogue is all shoes anyway.
+BROWSER_SHOE_STORES = {
+    "nike", "converse", "puma", "newbalance", "fila", "skechers",
+}
+BROWSER_SHOE_KEYWORDS = ["zapatillas", "zapatilla"]
+
+
+def watchlist_for(store: str, watchlist: dict) -> dict:
+    if store in BROWSER_SHOE_STORES:
+        return {**watchlist, "keywords": BROWSER_SHOE_KEYWORDS}
+    return watchlist
 
 SEEN_PATH = Path(__file__).parent / "data" / "seen_items.json"
 HISTORY_PATH = Path(__file__).parent / "data" / "price_history.json"
@@ -72,7 +98,7 @@ def fetch_all_deals(watchlist: dict) -> list[Deal]:
     def run_source(source):
         name, fetch = source
         try:
-            return name, fetch(watchlist), None
+            return name, fetch(watchlist_for(name, watchlist)), None
         except Exception as exc:
             return name, [], exc
 
