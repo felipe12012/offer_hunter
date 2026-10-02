@@ -45,7 +45,14 @@ def load_watchlist() -> dict:
 def fetch_all_deals(watchlist: dict) -> list[Deal]:
     # Resolved on every call so a monkeypatched module attribute is picked up —
     # same reasoning as job-hunter-agent/main.py.
-    source_fetchers = [(store, globals()[attr]) for store, attr in SOURCE_FETCHERS]
+    disabled = {name.lower() for name in watchlist.get("disabled_stores", [])}
+    source_fetchers = [
+        (store, globals()[attr]) for store, attr in SOURCE_FETCHERS if store not in disabled
+    ]
+    if disabled:
+        print(f"Skipping disabled stores: {', '.join(sorted(disabled))}", file=sys.stderr)
+    if not source_fetchers:
+        raise RuntimeError("Every store is disabled in config/watchlist.json")
 
     deals: list[Deal] = []
     failures = 0
@@ -62,8 +69,9 @@ def fetch_all_deals(watchlist: dict) -> list[Deal]:
     return deals
 
 
-def _store_summary(deals: list[Deal]) -> str:
-    counts = {store: 0 for store, _attr in SOURCE_FETCHERS}
+def _store_summary(deals: list[Deal], disabled: list[str] | None = None) -> str:
+    skipped = {name.lower() for name in disabled or []}
+    counts = {store: 0 for store, _attr in SOURCE_FETCHERS if store not in skipped}
     for deal in deals:
         counts[deal.store] = counts.get(deal.store, 0) + 1
     return ", ".join(f"{store}={count}" for store, count in counts.items())
@@ -104,7 +112,7 @@ def run() -> int:
     delivered_keys = {deal_key(scored.deal) for scored in delivered}
     pending_keys = {deal_key(scored.deal) for scored in candidates} - delivered_keys
 
-    print(f"Deals per store: {_store_summary(deals)}", file=sys.stderr)
+    print(f"Deals per store: {_store_summary(deals, watchlist.get("disabled_stores"))}", file=sys.stderr)
     print(
         f"Scanned {len(deals)} deals, {len(new_keys)} new, {len(candidates)} qualifying, "
         f"{unverified} advertised discounts discarded as unverified",

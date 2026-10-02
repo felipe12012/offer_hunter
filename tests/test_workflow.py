@@ -165,3 +165,28 @@ def test_run_does_not_notify_advertised_discount_that_history_cannot_confirm(mon
     assert main_fast.run() == 0
 
     assert calls == []  # unverified discount must never reach Telegram
+
+
+def test_disabled_stores_are_not_fetched(monkeypatch, tmp_path):
+    _patch_paths(monkeypatch, tmp_path)
+    watchlist_path = tmp_path / "watchlist.json"
+    watchlist_path.write_text(
+        json.dumps({"categories": ["herramientas"], "keywords": [], "disabled_stores": ["Paris", "ripley"]}),
+        encoding="utf-8",
+    )
+    called = []
+
+    def tracker(name):
+        def fetch(watchlist):
+            called.append(name)
+            return []
+        return fetch
+
+    _stub_all_sources(monkeypatch, **{attr: tracker(attr) for attr in main_fast.SOURCE_NAMES})
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored: scored)
+
+    assert main_fast.run() == 0
+
+    assert "fetch_paris_deals" not in called
+    assert "fetch_ripley_deals" not in called
+    assert "fetch_sodimac_deals" in called
