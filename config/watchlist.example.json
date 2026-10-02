@@ -1,0 +1,6 @@
+{
+  "categories": ["tecnologia", "mascotas", "muebles", "sony"],
+  "keywords": ["audifonos", "notebook", "alimento perro", "sillon", "taladro"],
+  "min_discount_pct": 30,
+  "min_real_discount_pct": 15
+}

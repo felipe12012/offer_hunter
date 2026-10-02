@@ -1,0 +1,49 @@
+name: Fast Tier Deal Scan
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright chromium
+        run: playwright install --with-deps chromium
+
+      - name: Run pipeline
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main_fast.py
+
+      - name: Commit updated data files
+        run: |
+          git config user.name "cyberday-hunter"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/seen_items.json data/price_history.json
+          git diff --cached --quiet || git commit -m "chore: update seen items and price history"
+          git push
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d text="⚠️ cyberday-hunter (fast tier): el pipeline falló. Logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
