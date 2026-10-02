@@ -1,5 +1,6 @@
 import html
 import os
+import re
 import sys
 import time
 
@@ -127,6 +128,56 @@ def _send_one(scored: ScoredDeal, token: str, chat_id: str) -> bool:
     )
 
 
+def _normalize_title(title: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", title.lower()).strip()
+
+
+def _dedupe_by_title(scored_deals: list[ScoredDeal]) -> list[ScoredDeal]:
+    """One offer per (store, normalized title), keeping the best-ranked.
+
+    Retailers list the same product under several SKUs (sizes, colours, duplicate
+    sponsored cards). Without this the chat fills with near-identical messages.
+    """
+    best: dict[tuple[str, str], ScoredDeal] = {}
+    for scored in scored_deals:
+        key = (scored.deal.store, _normalize_title(scored.deal.title))
+        current = best.get(key)
+        if current is None or _rank_key(scored) > _rank_key(current):
+            best[key] = scored
+    return list(best.values())
+
+
+def _round_robin_by_category(scored_deals: list[ScoredDeal], limit: int) -> list[ScoredDeal]:
+    """Interleave categories so a single category can't fill the digest.
+
+    Ranking by discount alone buried tablet and beauty deals under a flood of
+    deeply-discounted clothing, so every category with offers gets a turn before
+    any category gets a second one.
+    """
+    by_category: dict[str, list[ScoredDeal]] = {}
+    for scored in scored_deals:
+        by_category.setdefault(scored.deal.category, []).append(scored)
+    for items in by_category.values():
+        items.sort(key=_rank_key, reverse=True)
+    order = sorted(by_category, key=lambda category: _rank_key(by_category[category][0]), reverse=True)
+
+    picked: list[ScoredDeal] = []
+    index = 0
+    while len(picked) < limit:
+        added = False
+        for category in order:
+            items = by_category[category]
+            if index < len(items):
+                picked.append(items[index])
+                added = True
+                if len(picked) == limit:
+                    break
+        if not added:
+            break
+        index += 1
+    return picked
+
+
 def send_offers(
     scored_deals: list[ScoredDeal],
     bot_token: str | None = None,
@@ -142,7 +193,7 @@ def send_offers(
     bot_token = bot_token or os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = chat_id or os.environ.get("TELEGRAM_CHAT_ID")
 
-    ordered = sorted(scored_deals, key=_rank_key, reverse=True)[:MAX_MESSAGES_PER_RUN]
+    ordered = _round_robin_by_category(_dedupe_by_title(scored_deals), MAX_MESSAGES_PER_RUN)
 
     delivered: list[ScoredDeal] = []
     for index, scored in enumerate(ordered):

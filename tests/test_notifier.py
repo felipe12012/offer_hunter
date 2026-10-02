@@ -11,14 +11,15 @@ def make_scored(
     discount_pct: float = 10.0,
     real_discount_pct: float = 20.0,
     image_url: str = "https://img.example/p.jpg",
-    title: str = "Taladro percutor",
+    title: str | None = None,
+    category: str = "herramientas",
 ) -> ScoredDeal:
     deal = Deal(
         id=deal_id,
-        title=title,
+        title=title if title is not None else f"Taladro percutor {deal_id}",
         url=f"https://www.{store}.cl/product/{deal_id}",
         store=store,
-        category="herramientas",
+        category=category,
         price=price,
         list_price=price + 10000,
         discount_pct=discount_pct,
@@ -211,3 +212,40 @@ def test_format_offer_shows_store_prices_discount_and_link():
     assert "$149.990" in text
     assert "$159.990" in text           # list price (price + 10000 in the helper)
     assert "https://www.falabella.cl/product/sodimac:1" in text
+
+
+def test_every_category_gets_a_message_before_any_category_repeats(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    # 30 clothing offers at 80% and a single tablet at 40%: ranking by discount
+    # alone buries the tablet below all 30, so it never gets sent.
+    offers = [
+        make_scored(f"hites:r{i}", store="hites", title=f"Polera {i}", category="ropa", discount_pct=80.0)
+        for i in range(30)
+    ]
+    offers.append(
+        make_scored("falabella:t1", store="falabella", title="Tablet Samsung", category="tablet", discount_pct=40.0)
+    )
+
+    send_offers(offers, bot_token="tok", chat_id="123")
+
+    captions = [c[1]["caption"] for c in rec.calls]
+    assert any("Tablet Samsung" in caption for caption in captions[:2])
+
+
+def test_dedupes_same_title_within_a_store_keeping_the_best_rank(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    offers = [
+        make_scored("hites:1", store="hites", title="Polera de pijama", discount_pct=50.0),
+        make_scored("hites:2", store="hites", title="Polera  de   pijama ", discount_pct=80.0),
+        make_scored("falabella:3", store="falabella", title="Polera de pijama", discount_pct=60.0),
+    ]
+
+    send_offers(offers, bot_token="tok", chat_id="123")
+
+    captions = [c[1]["caption"] for c in rec.calls]
+    assert len(captions) == 2  # one per store
+    assert any("hites:2" in caption for caption in captions)      # the 80% one survives
+    assert not any("hites:1" in caption for caption in captions)
+    assert any("falabella:3" in caption for caption in captions)  # other store is not collapsed
