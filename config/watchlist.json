@@ -47,7 +47,8 @@
   "disabled_stores": [
     "paris",
     "ripley",
-    "tottus"
+    "tottus",
+    "nike"
   ],
   "scan": {
     "max_search_pages": 3,
