@@ -1,4 +1,5 @@
 # sources/sodimac.py
+import os
 import re
 import sys
 from datetime import datetime, timezone
@@ -123,7 +124,10 @@ def parse_html(html: str, category: str) -> list[Deal]:
 def fetch_html(keyword: str) -> str:
     url = SEARCH_URL.format(query=quote(keyword))
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        proxy = os.environ.get("SCRAPER_PROXY")
+        browser = p.chromium.launch(
+            headless=True, proxy={"server": proxy} if proxy else None
+        )
         context = browser.new_context(
             user_agent=USER_AGENT,
             viewport={"width": 1366, "height": 768},

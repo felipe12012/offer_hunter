@@ -29,6 +29,11 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # Optional. Paris, Ripley and Tottus block GitHub's datacenter IPs with
+          # a WAF/CloudFront 403, so they only scrape when the browser is routed
+          # through a clean (ideally Chilean residential) proxy. Format:
+          # http://user:pass@host:port  Leave unset to run the other stores directly.
+          SCRAPER_PROXY: ${{ secrets.SCRAPER_PROXY }}
         run: python main_fast.py
 
       - name: Commit updated data files
