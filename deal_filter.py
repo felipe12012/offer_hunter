@@ -50,18 +50,21 @@ def evaluate(deal: Deal, watchlist: dict, history: dict) -> ScoredDeal | None:
 
     reasons = []
     qualifies = False
+    advertised_confirmed = False
 
     if deal.discount_pct >= min_discount_pct:
         if watchlist.get("verify_advertised_discount", True):
             confirmed = _confirmed_list_price(deal, history)
             if confirmed is not None:
                 qualifies = True
+                advertised_confirmed = True
                 reasons.append(
                     f"-{deal.discount_pct:.0f}% vs precio normal "
                     f"(confirmado: se vendio a {_format_clp(confirmed)})"
                 )
         else:
             qualifies = True
+            advertised_confirmed = True  # the user opted out of verification
             reasons.append(f"-{deal.discount_pct:.0f}% vs precio normal")
 
     real_discount_pct = 0.0
@@ -75,4 +78,13 @@ def evaluate(deal: Deal, watchlist: dict, history: dict) -> ScoredDeal | None:
     if not qualifies:
         return None
 
-    return ScoredDeal(deal=deal, real_discount_pct=real_discount_pct, reasons=reasons)
+    # A store percentage is only trusted when history confirmed its list price;
+    # otherwise rank and announce by our own history-based drop.
+    verified_pct = max(real_discount_pct, deal.discount_pct if advertised_confirmed else 0.0)
+    return ScoredDeal(
+        deal=deal,
+        real_discount_pct=real_discount_pct,
+        reasons=reasons,
+        verified_pct=verified_pct,
+        advertised_confirmed=advertised_confirmed or deal.discount_pct <= 0,
+    )

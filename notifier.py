@@ -41,8 +41,11 @@ IMAGE_HEADERS = {
 
 
 def _rank_key(scored: ScoredDeal) -> float:
-    # A deal qualifies either on a real drop against its own price history, or
-    # on the store's own advertised discount. Rank on whichever is larger.
+    # Rank and announce by the verified discount, never by a store percentage
+    # that history could not confirm. Offers built without verification data
+    # (verified_pct is None) fall back to the larger of the two.
+    if scored.verified_pct is not None:
+        return scored.verified_pct
     return max(scored.real_discount_pct, scored.deal.discount_pct)
 
 
@@ -75,11 +78,17 @@ def format_offer(scored: ScoredDeal, max_title: int = MAX_TITLE_LENGTH, alerts: 
     lines.append(f"🏬 {html.escape(deal.store.title())}")
 
     price_line = f"💰 <b>{_format_clp(deal.price)}</b>"
-    if deal.list_price > deal.price:
-        price_line += f"  <s>{_format_clp(deal.list_price)}</s>"
-    if deal.discount_pct > 0:
-        price_line += f"  (-{deal.discount_pct:.0f}%)"
+    unconfirmed_claim = not scored.advertised_confirmed and deal.discount_pct > 0
+    if not unconfirmed_claim:
+        if deal.list_price > deal.price:
+            price_line += f"  <s>{_format_clp(deal.list_price)}</s>"
+        if deal.discount_pct > 0:
+            price_line += f"  (-{deal.discount_pct:.0f}%)"
     lines.append(price_line)
+    if unconfirmed_claim:
+        lines.append(
+            f"ℹ️ La web anuncia -{deal.discount_pct:.0f}% (antes {_format_clp(deal.list_price)}), no verificado"
+        )
 
     for reason in scored.reasons:
         lines.append(f"✅ {html.escape(reason[:200])}")

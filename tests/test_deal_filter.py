@@ -96,3 +96,24 @@ def test_single_historical_snapshot_does_not_crash_and_is_its_own_minimum():
     deal = make_deal(5000, 5000)  # no list-price discount at all
     history = {"sodimac:123": [{"date": "2026-09-01", "price": 5000}]}
     assert evaluate(deal, WATCHLIST, history) is None
+
+
+def test_history_only_offer_ignores_the_stores_inflated_percentage():
+    # Web claims -78% (crossed-out $50.000) but history only ever saw ~$20.000,
+    # so the claim can't be confirmed. It still qualifies as a real drop vs
+    # history (20.000 -> 11.000 = -45%), and that is the percentage to trust.
+    deal = make_deal(11000, 50000)
+    history = {"sodimac:123": [{"date": "2026-09-20", "price": 20000}]}
+    result = evaluate(deal, WATCHLIST, history)
+    assert result is not None
+    assert result.real_discount_pct == 45.0
+    assert result.verified_pct == 45.0
+    assert result.advertised_confirmed is False
+
+
+def test_confirmed_advertised_discount_is_trusted_as_the_verified_percentage():
+    deal = make_deal(6990, 9990)                          # web: -30%
+    history = {"sodimac:123": [{"date": "2026-09-01", "price": 9990}]}
+    result = evaluate(deal, WATCHLIST, history)
+    assert result.advertised_confirmed is True
+    assert result.verified_pct == max(result.real_discount_pct, deal.discount_pct)

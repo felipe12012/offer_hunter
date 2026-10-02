@@ -65,6 +65,10 @@ Consecuencias que conviene saber:
   ya rebajado no se puede confirmar**. Las ofertas aparecen cuando un producto cambia de precio.
 - Si solo quieres filtrar por porcentaje (con riesgo de precios inflados), pon
   `"verify_advertised_discount": false` en la watchlist.
+- **El porcentaje que se anuncia en Telegram (y con el que se ordenan y clasifican las alertas) es
+  el verificado**: la baja contra nuestro historial, o el descuento de la web solo si el historial
+  confirma su "precio normal". Si la web anuncia más (p. ej. -78 %) pero no se puede comprobar, el
+  mensaje usa el porcentaje del historial y lo avisa: *"La web anuncia -78 %…, no verificado"*.
 - Precio que se registra: el **más bajo entre el precio internet y el de evento**. El precio
   exclusivo de tarjeta (CMR) se ignora, porque no lo paga cualquiera.
 

@@ -327,3 +327,25 @@ def test_silent_flag_also_applies_to_text_fallback(monkeypatch):
     )
     assert rec.calls[-1][0] == "sendMessage"
     assert rec.calls[-1][1]["disable_notification"] is True
+
+
+def _history_only_offer():
+    scored = make_scored("sodimac:1", discount_pct=78.0, real_discount_pct=45.0)
+    return ScoredDeal(deal=scored.deal, real_discount_pct=45.0, reasons=scored.reasons,
+                      verified_pct=45.0, advertised_confirmed=False)
+
+
+def test_header_and_ranking_use_the_verified_percentage_not_the_web_one():
+    from notifier import _rank_key
+    offer = _history_only_offer()
+    assert _rank_key(offer) == 45.0
+    text = format_offer(offer)
+    assert "-78%" not in text.splitlines()[0]
+
+
+def test_unconfirmed_web_discount_is_flagged_instead_of_shown_as_the_discount():
+    text = format_offer(_history_only_offer())
+    assert "<s>" not in text                      # no crossed-out price presented as fact
+    assert "no verificado" in text
+    assert "78%" in text                           # but the user can still see what the web claims
+    assert "error de precio" not in text           # 45% verified is not an extreme discount
