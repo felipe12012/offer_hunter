@@ -8,6 +8,14 @@ on:
 permissions:
   contents: write
 
+# One scan at a time. A run lasts ~6 minutes and the cron fires every 15, but a
+# delayed or manually dispatched run can overlap the next one; two runs both
+# commit data/ and the second `git push` is rejected, failing the workflow.
+# Keeping the in-flight run and dropping the queued duplicate avoids that.
+concurrency:
+  group: fast-tier-scan
+  cancel-in-progress: false
+
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
@@ -42,6 +50,10 @@ jobs:
           git config user.email "actions@users.noreply.github.com"
           git add data/seen_items.json data/price_history.json
           git diff --cached --quiet || git commit -m "chore: update seen items and price history"
+          # Rebase onto whatever landed while this run was scanning (another
+          # run, or a manual push). Without this the push is rejected and the
+          # whole workflow is marked failed even though the scan succeeded.
+          git pull --rebase origin main
           git push
 
       - name: Notify on failure

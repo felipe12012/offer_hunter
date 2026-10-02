@@ -45,3 +45,19 @@ def test_workflow_notifies_telegram_on_failure():
     assert len(failure_steps) == 1
     assert "sendMessage" in failure_steps[0]["run"]
     assert steps[-1] is failure_steps[0]
+
+
+def test_workflow_serialises_runs_so_data_commits_do_not_collide():
+    # Two overlapping runs both commit data/ and the second push is rejected,
+    # failing a scan that actually succeeded. A concurrency group prevents it.
+    parsed = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
+
+    assert parsed["concurrency"]["group"]
+
+
+def test_workflow_rebases_before_pushing_data_files():
+    # Guards against the push being rejected when another run or a manual push
+    # landed while this scan was in flight.
+    content = WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    assert "git pull --rebase" in content
