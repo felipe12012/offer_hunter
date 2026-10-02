@@ -34,9 +34,17 @@ def _patch_paths(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(main_fast, "HISTORY_PATH", tmp_path / "price_history.json")
 
 
+def _stub_all_sources(monkeypatch, **overrides):
+    """Replace every registered source fetcher so the workflow tests never hit
+    the network. Derived from main_fast.SOURCE_NAMES so adding a store can't
+    silently start making live requests from the test suite."""
+    for attr in main_fast.SOURCE_NAMES:
+        monkeypatch.setattr(main_fast, attr, overrides.get(attr, lambda watchlist: []))
+
+
 def test_run_sends_digest_and_persists_state(monkeypatch, tmp_path):
     _patch_paths(monkeypatch, tmp_path)
-    monkeypatch.setattr(main_fast, "fetch_sodimac_deals", lambda watchlist: [make_deal("sodimac:1", 5000)])
+    _stub_all_sources(monkeypatch, fetch_sodimac_deals=lambda watchlist: [make_deal("sodimac:1", 5000)])
 
     sent = {}
     monkeypatch.setattr(main_fast, "send_digest", lambda scored: sent.setdefault("count", len(scored)) or True)
@@ -63,7 +71,7 @@ def test_run_does_not_compare_real_discount_against_its_own_just_scraped_price(m
     (tmp_path / "price_history.json").write_text(
         json.dumps({"sodimac:1": [{"date": "2026-09-20", "price": 9990}]}), encoding="utf-8"
     )
-    monkeypatch.setattr(main_fast, "fetch_sodimac_deals", lambda watchlist: [make_deal("sodimac:1", 5000)])
+    _stub_all_sources(monkeypatch, fetch_sodimac_deals=lambda watchlist: [make_deal("sodimac:1", 5000)])
 
     captured = {}
     monkeypatch.setattr(main_fast, "send_digest", lambda scored: captured.setdefault("scored", scored) or True)
@@ -78,7 +86,7 @@ def test_run_does_not_compare_real_discount_against_its_own_just_scraped_price(m
 def test_run_skips_already_seen_id_price_pairs(monkeypatch, tmp_path):
     _patch_paths(monkeypatch, tmp_path)
     (tmp_path / "seen_items.json").write_text(json.dumps(["sodimac:1:5000"]), encoding="utf-8")
-    monkeypatch.setattr(main_fast, "fetch_sodimac_deals", lambda watchlist: [make_deal("sodimac:1", 5000)])
+    _stub_all_sources(monkeypatch, fetch_sodimac_deals=lambda watchlist: [make_deal("sodimac:1", 5000)])
 
     captured = {}
     monkeypatch.setattr(main_fast, "send_digest", lambda scored: captured.setdefault("scored", scored) or True)
@@ -94,6 +102,6 @@ def test_run_returns_1_when_source_raises(monkeypatch, tmp_path):
     def boom(watchlist):
         raise RuntimeError("site down")
 
-    monkeypatch.setattr(main_fast, "fetch_sodimac_deals", boom)
+    _stub_all_sources(monkeypatch, **{attr: boom for attr in main_fast.SOURCE_NAMES})
 
     assert main_fast.run() == 1
