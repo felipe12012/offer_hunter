@@ -1,0 +1,82 @@
+name: Probe Laika Mascotas
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: HTTP probe
+        run: |
+          pip install requests curl_cffi
+          python - <<'PY'
+          import requests
+          from curl_cffi import requests as creq
+          UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36", "Accept-Language": "es-CL,es;q=0.9"}
+          for host in ("https://www.laikamascotas.cl", "https://laikamascotas.cl"):
+              try:
+                  r = requests.get(host, headers=UA, timeout=25, allow_redirects=True)
+                  low = r.text.lower()
+                  markers = [m for m in ("vtex","shopify","magento","__next_data__","demandware","cloudflare","just a moment","captcha","woocommerce","jumpseller","prestashop") if m in low]
+                  print(f"HOME {host} -> {r.status_code} final={r.url[:55]} len={len(r.text)} markers={markers}")
+              except Exception as e:
+                  print(f"HOME {host} -> ERROR {type(e).__name__}")
+              for label, path in (
+                  ("vtex", "/api/catalog_system/pub/products/search?ft=alimento%20perro&_from=0&_to=2"),
+                  ("shopify", "/products.json?limit=3"),
+                  ("vtexio", "/api/io/_v/api/intelligent-search/product_search/alimento%20perro?count=3"),
+              ):
+                  for tool, getter in (("req", lambda u: requests.get(u, headers=UA, timeout=25)),
+                                       ("curl", lambda u: creq.get(u, impersonate="chrome", timeout=25))):
+                      try:
+                          rr = getter(host + path)
+                          n = ""
+                          if rr.status_code == 200:
+                              try:
+                                  data = rr.json()
+                                  n = f" n={len(data)}" if isinstance(data, list) else " non-list"
+                              except Exception:
+                                  n = " non-json"
+                          if rr.status_code != 404:
+                              print(f"   {label} [{tool}] -> {rr.status_code}{n} len={len(rr.text)}")
+                      except Exception:
+                          pass
+          PY
+      - name: Browser search render
+        run: |
+          pip install patchright
+          patchright install chromium >/dev/null 2>&1 || true
+          python - <<'PY'
+          import re
+          from patchright.sync_api import sync_playwright
+          UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+          INPUTS = ["input[type='search']","input[name='q']","input[placeholder*='usca']","input[placeholder*='Busca']","input[aria-label*='usca']","input[name='search']"]
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
+              ctx = browser.new_context(user_agent=UA, viewport={"width":1366,"height":900}, locale="es-CL", timezone_id="America/Santiago")
+              page = ctx.new_page()
+              try:
+                  page.goto("https://www.laikamascotas.cl/", wait_until="domcontentloaded", timeout=45000)
+                  page.wait_for_timeout(4000)
+                  used = None
+                  for sel in INPUTS:
+                      el = page.query_selector(sel)
+                      if el:
+                          el.fill("alimento perro"); used = sel; el.press("Enter"); break
+                  page.wait_for_timeout(8000)
+                  links = page.eval_on_selector_all("a[href]", "els => els.map(e => [e.href, (e.innerText||'').trim()]).filter(x => x[1] && x[1].length > 12)")
+                  prod = [l for l in links if re.search(r"(/p/|/product|/articulo|/pd/|-p-|/\d{6,}|/products/|/item)", l[0])]
+                  print(f"SITE laikamascotas input={used} final={page.url[:70]}")
+                  print(f"     links={len(links)} productish={len(prod)}")
+                  for href, text in prod[:4]:
+                      print(f"       {text[:42]!r} {href[:70]}")
+              except Exception as e:
+                  print(f"SITE -> ERROR {type(e).__name__}: {str(e)[:70]}")
+              finally:
+                  ctx.close(); browser.close()
+          PY
