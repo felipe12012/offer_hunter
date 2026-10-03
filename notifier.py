@@ -45,8 +45,20 @@ IMAGE_HEADERS = {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
     ),
-    "Accept": "image/avif,image/webp,image/*,*/*;q=0.8",
+    # Ask for JPEG/PNG first: some CDNs serve webp/avif when advertised, and
+    # Telegram rejects AVIF. JPEG avoids a conversion round-trip.
+    "Accept": "image/jpeg,image/png,image/*;q=0.8",
 }
+_CONTENT_TYPE_EXT = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/avif": "avif",
+    "image/gif": "gif",
+}
+# Telegram accepts JPEG/PNG/WebP for sendPhoto but not AVIF; converting whatever
+# it cannot take to JPEG is cheaper than losing the photo.
+_TELEGRAM_PHOTO_FORMATS = {"jpg", "jpeg", "png", "webp"}
 
 
 def _rank_key(scored: ScoredDeal) -> float:
@@ -143,24 +155,49 @@ def _post(token: str, method: str, **kwargs) -> bool:
             time.sleep(min(wait, MAX_RETRY_AFTER_SECONDS))
             continue
         if response.status_code >= 400:
-            print(f"Telegram {method} failed with HTTP {response.status_code}", file=sys.stderr)
+            # Telegram explains the rejection in "description"; without it a
+            # failed sendPhoto is just a bare 400 and undiagnosable.
+            detail = ""
+            try:
+                detail = response.json().get("description", "")
+            except Exception:
+                detail = response.text[:200]
+            print(f"Telegram {method} failed with HTTP {response.status_code}: {detail}", file=sys.stderr)
             return False
         return True
     return False
 
 
-def _download_image(url: str) -> bytes | None:
+def _download_image(url: str) -> tuple[bytes, str] | None:
     try:
         response = requests.get(url, headers=IMAGE_HEADERS, timeout=20)
         response.raise_for_status()
     except requests.RequestException:
         return None
-    content_type = response.headers.get("Content-Type", "")
+    content_type = response.headers.get("Content-Type", "").split(";")[0].strip().lower()
     if not content_type.startswith("image/") or not response.content:
         return None
     if len(response.content) > MAX_IMAGE_BYTES:
         return None
-    return response.content
+    return response.content, _CONTENT_TYPE_EXT.get(content_type, "jpg")
+
+
+def _to_jpeg(data: bytes) -> bytes | None:
+    """Convert an image Telegram would reject (AVIF, or a mislabelled format) to
+    JPEG. Returns None when Pillow is unavailable or the bytes are unreadable."""
+    try:
+        import io
+
+        from PIL import Image
+    except ImportError:
+        return None
+    try:
+        image = Image.open(io.BytesIO(data)).convert("RGB")
+        out = io.BytesIO()
+        image.save(out, format="JPEG", quality=85)
+        return out.getvalue()
+    except Exception:
+        return None
 
 
 def _is_silent(scored: ScoredDeal, config: dict) -> bool:
@@ -183,7 +220,8 @@ def _send_one(
     alerts: dict | None = None,
     thread_id: int | None = None,
     allow_silent: bool = True,
-) -> bool:
+) -> str:
+    """Returns "photo", "text", or "" (nothing delivered)."""
     config = _alerts(alerts)
     markup = _link_button(scored.deal.url)
     # With a button the link leaves the caption; without one it stays inside it.
@@ -210,24 +248,32 @@ def _send_one(
             "sendPhoto",
             json={"chat_id": chat_id, "photo": image_url, "caption": caption, "parse_mode": "HTML", **extra},
         ):
-            return True
+            return "photo"
         # 2) some CDNs refuse Telegram's fetcher or serve formats it rejects:
-        #    download the image ourselves and upload the bytes.
-        image = _download_image(image_url)
-        if image is not None and _post(
-            token,
-            "sendPhoto",
-            data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML", **form_extra},
-            files={"photo": ("offer.jpg", image)},
-        ):
-            return True
+        #    download the image ourselves, convert what it can't take, and upload.
+        downloaded = _download_image(image_url)
+        if downloaded is not None:
+            image, ext = downloaded
+            if ext not in _TELEGRAM_PHOTO_FORMATS:
+                converted = _to_jpeg(image)
+                if converted is not None:
+                    image, ext = converted, "jpg"
+            if _post(
+                token,
+                "sendPhoto",
+                data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML", **form_extra},
+                files={"photo": (f"offer.{ext}", image)},
+            ):
+                return "photo"
 
     # 3) never lose an offer just because its picture failed.
-    return _post(
+    if _post(
         token,
         "sendMessage",
         json={"chat_id": chat_id, "text": caption, "parse_mode": "HTML", **extra},
-    )
+    ):
+        return "text"
+    return ""
 
 
 def _normalize_title(title: str) -> str:
@@ -323,20 +369,29 @@ def send_offers(
         ordered += _round_robin_by_category(_dedupe_by_title(unverified), min(limit, room))
 
     delivered: list[ScoredDeal] = []
+    photo_messages = 0
+    text_messages = 0
     for index, scored in enumerate(ordered):
         if index:
             time.sleep(SEND_DELAY_SECONDS)
 
-        ok = False
+        result = ""
         if alert_chat_id and _rank_key(scored) >= alert_min:
-            ok = _send_one(scored, bot_token, alert_chat_id, alerts, thread_id, allow_silent=False)
-            if not ok:
+            result = _send_one(scored, bot_token, alert_chat_id, alerts, thread_id, allow_silent=False)
+            if not result:
                 print(f"Alert chat failed for {scored.deal.id}; falling back to the main chat", file=sys.stderr)
-        if not ok:
-            ok = _send_one(scored, bot_token, chat_id, alerts)
+        if not result:
+            result = _send_one(scored, bot_token, chat_id, alerts)
 
-        if ok:
+        if result:
             delivered.append(scored)
+            photo_messages += result == "photo"
+            text_messages += result == "text"
         else:
             print(f"Could not deliver offer {scored.deal.id}", file=sys.stderr)
+    if delivered:
+        print(
+            f"Telegram: {len(delivered)} delivered ({photo_messages} with photo, {text_messages} as text)",
+            file=sys.stderr,
+        )
     return delivered
