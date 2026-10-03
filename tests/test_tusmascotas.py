@@ -7,7 +7,7 @@ import pytest
 from sources.health import NoResultsError
 from sources.tusmascotas import parse_html
 
-FIXTURE_PATH = Path(__file__).parent / "fixtures" / "tusmascotas_sample.json"
+FIXTURE_PATH = Path(__file__).parent / "fixtures" / "tusmascotas_sample.html"
 
 HILLS_ID = "tusmascotas:952486"
 MAZURI_ID = "tusmascotas:1150201"
