@@ -5,13 +5,6 @@ import "server-only";
 
 import { buildHeaders } from "./headers";
 
-const URL = process.env.SUPABASE_URL;
-const KEY = process.env.SUPABASE_SERVICE_KEY;
-
-if (!URL || !KEY) {
-  throw new Error("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set (server environment only)");
-}
-
 export class SupabaseError extends Error {
   constructor(
     public status: number,
@@ -23,20 +16,55 @@ export class SupabaseError extends Error {
   }
 }
 
+/** No hay credenciales configuradas (la web puede entonces usar la muestra local en desarrollo). */
+export class SupabaseConfigError extends Error {
+  constructor() {
+    super("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set (server environment only)");
+    this.name = "SupabaseConfigError";
+  }
+}
+
+export function hasCredentials(): boolean {
+  return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY);
+}
+
+const TIMEOUT_MS = 10_000;
+
+async function once(url: string, init: RequestInit, revalidate: number): Promise<Response> {
+  return fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS), next: { revalidate } });
+}
+
 export async function rest<T>(
   path: string,
   opts: { revalidate?: number; count?: boolean; method?: "GET" | "POST"; body?: unknown } = {},
 ): Promise<{ rows: T; total: number | null }> {
-  const res = await fetch(`${URL}/rest/v1/${path}`, {
+  // Las credenciales se leen al usarse, no al importar: así `next build` no las necesita.
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) throw new SupabaseConfigError();
+
+  const init: RequestInit = {
     method: opts.method ?? "GET",
-    headers: buildHeaders(KEY!, {
+    headers: buildHeaders(key, {
       ...(opts.count ? { Prefer: "count=exact" } : {}),
       ...(opts.body ? { "Content-Type": "application/json" } : {}),
     }),
     body: opts.body ? JSON.stringify(opts.body) : undefined,
-    signal: AbortSignal.timeout(10_000),
-    next: { revalidate: opts.revalidate ?? 120 },
-  });
+  };
+  const target = `${url}/rest/v1/${path}`;
+  const revalidate = opts.revalidate ?? 120;
+
+  let res: Response;
+  try {
+    res = await once(target, init, revalidate);
+    if (res.status >= 500) res = await once(target, init, revalidate); // un reintento ante errores 5xx
+  } catch {
+    try {
+      res = await once(target, init, revalidate); // un reintento ante fallos de red o tiempo agotado
+    } catch {
+      throw new SupabaseError(0, undefined, "La base de datos no respondió");
+    }
+  }
 
   if (!res.ok) {
     let code: string | undefined;
@@ -46,7 +74,7 @@ export async function rest<T>(
       code = err.code;
       message = err.message ?? message;
     } catch {
-      /* body was not JSON */
+      /* el cuerpo no era JSON */
     }
     // Nunca incluir la clave ni la URL completa en el error visible.
     throw new SupabaseError(res.status, code, message);

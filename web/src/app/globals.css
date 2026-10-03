@@ -1,26 +1,185 @@
 @import "tailwindcss";
 
+/* Sistema de diseño: hoja de catálogo. Papel frío, tinta, y UN elemento con color fuerte:
+   la etiqueta de precio con el descuento. Lo demás es silencioso. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --paper: #f4f5f7;
+  --surface: #ffffff;
+  --ink: #101828;
+  --muted: #5b6577;
+  --line: #d9dee5;
+  --verified: #0b7a6b;
+  --verified-bg: #e4f3f0;
+  --tier-gran: #d9480f;
+  --tier-ofertaza: #d92d20;
+  --tier-super: #b5106e;
+  --claim-bg: #e7eaf0;
+  --focus: #1d4ed8;
+  --photo: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --paper: #0d1320;
+    --surface: #141b2b;
+    --ink: #eef1f6;
+    --muted: #9ba5b7;
+    --line: #2a3447;
+    --verified: #45c9b3;
+    --verified-bg: #10302c;
+    --tier-gran: #ea6a22;
+    --tier-ofertaza: #ef4a3d;
+    --tier-super: #d4309a;
+    --claim-bg: #263045;
+    --focus: #7aa2ff;
+    /* las fotos de producto vienen con fondo blanco: se dejan sobre blanco */
+    --photo: #ffffff;
   }
 }
 
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-verified: var(--verified);
+  --color-verified-bg: var(--verified-bg);
+  --color-claim-bg: var(--claim-bg);
+  --font-sans: var(--font-public), system-ui, sans-serif;
+  --font-display: var(--font-barlow), "Arial Narrow", sans-serif;
+}
+
+html {
+  background: var(--paper);
+  color: var(--ink);
+  scroll-padding-top: 5rem;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Etiqueta de precio: muesca a la izquierda y un agujero, como las de góndola. */
+.tag {
+  --tag-bg: var(--tier-gran);
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  padding: 0.28rem 0.7rem 0.28rem 1.15rem;
+  color: #fff;
+  background-color: var(--tag-bg);
+  background-image: radial-gradient(circle at 0.62rem 50%, var(--surface) 0.18rem, transparent 0.2rem);
+  clip-path: polygon(0.7rem 0, 100% 0, 100% 100%, 0.7rem 100%, 0 50%);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.4rem;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.tag--gran { --tag-bg: var(--tier-gran); }
+.tag--ofertaza { --tag-bg: var(--tier-ofertaza); }
+.tag--super { --tag-bg: var(--tier-super); }
+.tag--ok { --tag-bg: var(--verified); }
+.tag--claim {
+  --tag-bg: var(--claim-bg);
+  color: var(--ink);
+  font-size: 1.1rem;
+}
+.tag small {
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/* Sello de verificación: tinta, ligeramente torcido, como un timbre. */
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.05rem 0.45rem;
+  border: 1.5px solid var(--verified);
+  border-radius: 3px;
+  color: var(--verified);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.2;
+  transform: rotate(-2.5deg);
+}
+.stamp--no {
+  border-style: dashed;
+  border-color: var(--muted);
+  color: var(--muted);
+  transform: none;
+}
+
+.price {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.005em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Fotos: cuadradas, sobre blanco, sin recortar el producto. */
+.photo {
+  background: var(--photo);
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 0.75rem;
+}
+
+/* Esqueleto de carga */
+@keyframes sheen {
+  to {
+    background-position: -200% 0;
+  }
+}
+.skeleton {
+  background: linear-gradient(100deg, var(--line) 30%, var(--surface) 50%, var(--line) 70%);
+  background-size: 200% 100%;
+  animation: sheen 1.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+  * {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}
+
+/* Carrusel horizontal */
+.rail {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+.rail > * {
+  scroll-snap-align: start;
+  flex: 0 0 min(15rem, 70vw);
 }

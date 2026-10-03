@@ -1,3 +1,4 @@
+// Forma de las filas de la vista offer_feed (ver supabase/migrations/0005).
 export type FeedRow = {
   id: string;
   store: string;
@@ -13,7 +14,14 @@ export type FeedRow = {
   verified_pct: number;
   web_confirmed: boolean;
   history_drop_pct: number;
-  points: number;
+  points: number | null;
+  distinct_prices?: number | null;
+  hist_min?: number | null;
+  hist_max?: number | null;
+  prev_min?: number | null;
+  prev_max?: number | null;
+  first_point_at?: string | null;
+  first_seen_at?: string;
   last_seen_at: string;
 };
 

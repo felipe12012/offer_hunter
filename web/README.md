@@ -1,36 +1,84 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CazaOfertas (web)
 
-## Getting Started
+Web pública de solo lectura que lista las ofertas que recolecta el servicio de la raíz del repositorio
+(`offer_hunter`), con filtros, orden y una ficha por producto con su historial de precios. Marca como
+**verificados** los descuentos que el historial propio respalda y deja claro cuáles solo son lo que anuncia la tienda.
 
-First, run the development server:
+Next.js (App Router) · TypeScript · Tailwind · Supabase (Data API, solo servidor) · Vercel.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Páginas
+
+| Ruta | Qué muestra |
+|---|---|
+| `/` | Portada: resumen, los descuentos verificados más grandes, filtros, orden y listado paginado |
+| `/oferta/[tienda]/[sku]` | Ficha: precio, panel "¿Es una oferta real?", gráfico del historial y productos relacionados |
+| `/como-verificamos` | Explica el método y sus límites |
+| `/api/health` | Responde 200 y la hora (no toca la base de datos) |
+
+Todos los filtros viven en la URL y se pueden compartir: `q`, `cat`, `store`, `min`, `pmin`, `pmax`, `ver`, `sort`, `page`
+(validados en `src/lib/filters.ts`).
+
+## Cómo funciona con los datos
+
+```
+Navegador ──HTML──▶ Next.js (servidor en Vercel) ──HTTPS + clave secreta──▶ Supabase Data API
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- **El navegador nunca habla con Supabase.** Solo `src/lib/supabase.ts` conoce la clave, y solo hace lecturas.
+- Lee la vista `offer_feed` (precalculada, 10 ms por consulta), la función `offer_stats()` y la tabla
+  `offer_price_points`. Todo está definido en `../supabase/migrations/`.
+- Los datos se cachean 120 s; el pipeline los actualiza cada ~15 min.
+- Un producto solo se muestra si se vio en las últimas 6 horas, y Falabella/Sodimac no aparecen duplicados.
+- La referencia completa de la conexión está en `../docs/superpowers/plans/2026-10-03-offers-web.md`, sección 5B.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Desarrollo local
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+cd web
+npm ci
+cp .env.example .env.local     # y rellena SUPABASE_SERVICE_KEY (ver abajo)
+npm run dev                    # http://localhost:3000
+```
 
-## Learn More
+**Sin credenciales** (`SUPABASE_*` vacías) y fuera de producción, la web usa una **muestra real** de 23 productos
+(`src/lib/fixtures.ts`), para poder desarrollar la interfaz sin la clave. **En producción nunca hay datos de
+muestra**: sin credenciales falla de forma visible.
 
-To learn more about Next.js, take a look at the following resources:
+### Variables de entorno (solo servidor)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Variable | Valor |
+|---|---|
+| `SUPABASE_URL` | `https://qxwxftmlqimfausocwoi.supabase.co` |
+| `SUPABASE_SERVICE_KEY` | Clave **secreta** (`sb_secret_…`). Crea una propia para la web en Supabase → Project Settings → API Keys → *Secret keys* (así se puede rotar sin tocar la del pipeline). **Nunca** con el prefijo `NEXT_PUBLIC_` |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+La clave `anon` o la publicable **no sirven**: las tablas `offer_*` están cerradas a propósito para esos roles.
 
-## Deploy on Vercel
+### Comandos
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Comando | Para qué |
+|---|---|
+| `npm test` | Pruebas unitarias (Vitest): filtros, consultas, formato, gráfico, capa de datos |
+| `npm run lint` · `npx tsc --noEmit` | Calidad y tipos |
+| `npm run build` | Compila (no necesita credenciales) |
+| `npm run check:secrets` | Falla si la clave aparece en lo que se descarga en el navegador (ejecutar después de `build`) |
+| `npm run check:supabase` | Comprueba la conexión real (URL, clave, vista, función) usando `.env.local` |
+| `node scripts/mock-supabase.mjs` | Servidor falso de la API para probar el modo producción sin la clave |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Despliegue en Vercel
+
+1. **New Project** → importar `felipe12012/offer_hunter` con **Root Directory = `web`** (framework Next.js; `vercel.json` ya fija la región `iad1`).
+2. **Environment Variables** (Production, Preview y Development): `SUPABASE_URL` y `SUPABASE_SERVICE_KEY`
+   (esta última como **Sensitive**).
+3. **No hace falta tocar el *Ignored Build Step***: `vercel.json` ya lo trae (`git diff HEAD^ HEAD --quiet -- .`).
+   Sin él, los commits que el bot hace a `data/` cada 15 minutos dispararían unos 96 despliegues al día.
+   Comprueba que un commit que solo cambia `data/` **no** despliega, y uno que cambia `web/` **sí**.
+4. Primero se despliega en **Preview**; se revisa; y a Production solo con aprobación.
+
+## Seguridad
+
+- Cabeceras de seguridad y CSP en `next.config.ts`; `noindex` hasta que se decida lo contrario (`src/app/layout.tsx`).
+- Lecturas únicamente; ninguna ruta acepta datos del usuario hacia la base.
+- Todo valor de la URL se valida con listas blancas antes de armar una consulta (`filters.ts`, `query.ts`).
+- Los títulos vienen de terceros y se tratan como texto (React los escapa); los enlaces externos llevan
+  `rel="noopener noreferrer nofollow"`.
+- Si la clave se filtra: rotarla en Supabase y actualizarla en Vercel (y en GitHub si el pipeline la compartía).

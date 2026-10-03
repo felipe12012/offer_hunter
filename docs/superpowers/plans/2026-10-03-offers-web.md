@@ -1,7 +1,11 @@
 # Web de ofertas (Next.js + Supabase + Vercel) — plan de ejecución
 
-Estado: **plan listo, nada de esto está construido**. Escrito para que otro agente (opencode) lo
-ejecute sin más contexto que este archivo y el repositorio.
+Estado (3-oct-2026): **construido y verificado en local; falta desplegar en Vercel.**
+Hecho: fases 1 a 6 (migraciones 0002, 0004, 0005 aplicadas; refresco en el pipeline; web en `web/` con
+filtros, ficha, método, 84 pruebas, lint, build y comprobación de secretos). Pendiente: crear la clave
+secreta propia de la web, cargarla en Vercel y desplegar (fase 7).
+Desviaciones del plan: el gráfico es un SVG propio (sin Recharts); la búsqueda ignora tildes
+(`title_norm`, migración 0005); `dup_rank` evita mostrar el mismo producto de Falabella y Sodimac dos veces.
 
 Meta: una web pública, rápida y atractiva que lista las ofertas que ya recolecta el servicio
 (`offer_hunter`), con filtros, orden y ficha de producto con el historial de precios, mostrando
