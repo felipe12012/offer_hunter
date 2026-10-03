@@ -1,0 +1,57 @@
+name: Probe Pharmacies
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Probe
+        run: |
+          pip install requests curl_cffi
+          python - <<'PY'
+          import requests
+          from curl_cffi import requests as creq
+
+          UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36", "Accept-Language": "es-CL,es;q=0.9"}
+          SITES = {
+              "salcobrand": ("https://salcobrand.cl", "https://www.salcobrand.cl"),
+              "cruzverde": ("https://cruzverde.cl", "https://www.cruzverde.cl"),
+              "ahumada": ("https://farmaciasahumada.cl", "https://www.farmaciasahumada.cl"),
+          }
+
+          for name, (apex, www) in SITES.items():
+              for host in (www, apex):
+                  try:
+                      r = requests.get(host, headers=UA, timeout=25, allow_redirects=True)
+                      low = r.text.lower()
+                      markers = [m for m in ("vtex", "shopify", "magento", "__next_data__", "demandware", "cloudflare", "just a moment", "captcha") if m in low]
+                      print(f"HOME {host} -> {r.status_code} final={r.url[:55]} len={len(r.text)} markers={markers}")
+                  except Exception as e:
+                      print(f"HOME {host} -> ERROR {type(e).__name__}")
+
+                  apis = [
+                      ("vtex", f"{host}/api/catalog_system/pub/products/search?ft=crema&_from=0&_to=2"),
+                      ("vtexio", f"{host}/api/io/_v/api/intelligent-search/product_search/crema?count=3"),
+                  ]
+                  for label, url in apis:
+                      for tool, getter in (("req", lambda u: requests.get(u, headers=UA, timeout=25)),
+                                           ("curl", lambda u: creq.get(u, impersonate="chrome", timeout=25))):
+                          try:
+                              rr = getter(url)
+                              n = ""
+                              if rr.status_code == 200:
+                                  try:
+                                      data = rr.json()
+                                      n = f" n={len(data)}" if isinstance(data, list) else " non-list"
+                                  except Exception:
+                                      n = " non-json"
+                              print(f"  {name} {label} [{tool}] -> {rr.status_code}{n} len={len(rr.text)}")
+                          except Exception as e:
+                              print(f"  {name} {label} [{tool}] -> ERROR {type(e).__name__}")
+          PY
