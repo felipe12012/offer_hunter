@@ -113,6 +113,7 @@ def test_priority_titles_are_recognised(title, category, hint, expected):
         ("Zueco Bebés Recién Nacidos Azul Crocs", "zapatillas bebe", ""),
         ("EXIT Clóset Verona 4 Puertas Ripado Correderas Metalicas 200x120x47", "tablet", ""),     # 'ipad' inside 'ripado'
         ("GAMESIR Control X5 Lite para iPhone 15 16, Android y iPad Mini. Sticks de Efecto", "tablet", ""),
+        ("GENERICO Backbone One edición PlayStation para iPhone - Lightning", "videojuegos", ""),   # phone gamepad
         ("Consola Power Mixer Ct-4 Ch Mavi", "consola", ""),                                          # audio console
         ("Consola Podcast Multipista Portátil N-live Nai-33l Nux", "consola", ""),
         ("N&D Prime Perro Adulto Cordero 7Kg", "mascotas", ""),                        # dog food
