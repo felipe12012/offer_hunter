@@ -28,6 +28,7 @@ from sources.falabella import fetch_deals as fetch_falabella_deals
 from sources.fila import fetch_deals as fetch_fila_deals
 from sources.hites import fetch_deals as fetch_hites_deals
 from sources.hushpuppies import fetch_deals as fetch_hushpuppies_deals
+from sources.laikamascotas import fetch_deals as fetch_laikamascotas_deals
 from sources.lapolar import fetch_deals as fetch_lapolar_deals
 from sources.merrell import fetch_deals as fetch_merrell_deals
 from sources.newbalance import fetch_deals as fetch_newbalance_deals
@@ -72,6 +73,7 @@ SOURCE_FETCHERS = [
     ("ahumada", "fetch_ahumada_deals"),
     ("lapolar", "fetch_lapolar_deals"),
     ("tricot", "fetch_tricot_deals"),
+    ("laikamascotas", "fetch_laikamascotas_deals"),
 ]
 SOURCE_NAMES = [attr for _store, attr in SOURCE_FETCHERS]
 
