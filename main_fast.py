@@ -318,7 +318,12 @@ def run() -> int:
         file=sys.stderr,
     )
 
-    if candidates and not delivered:
+    # Only a real delivery failure is an error: some offer was eligible to be sent
+    # and none got through. Candidates that were never sendable (only unverified
+    # ones while the daily/per-run quota is spent) are not a Telegram failure, and
+    # returning here would skip saving history, the budget and the Supabase mirror.
+    attempted = any(c.advertised_confirmed for c in candidates) or unverified_room > 0
+    if candidates and attempted and not delivered:
         print("Notification failed: no offer could be delivered to Telegram", file=sys.stderr)
         return 1
 

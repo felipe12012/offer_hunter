@@ -348,3 +348,47 @@ def test_mirror_is_skipped_when_telegram_delivery_fails_entirely(monkeypatch, tm
 
     assert main_fast.run() == 1
     assert mirror.scans == []          # JSON state was not saved either, so both stay aligned
+
+
+def _unverified_only_setup(monkeypatch, tmp_path):
+    """Watchlist in 'label' mode with a single deal whose 60% discount history cannot confirm."""
+    _patch_paths(monkeypatch, tmp_path)
+    (tmp_path / "watchlist.json").write_text(
+        json.dumps({
+            "categories": ["herramientas"], "keywords": [], "min_discount_pct": 30,
+            "min_real_discount_pct": 15, "verify_advertised_discount": "label",
+        }),
+        encoding="utf-8",
+    )
+    _stub_all_sources(
+        monkeypatch, fetch_sodimac_deals=lambda watchlist: [make_deal("sodimac:1", 4000, list_price=10000)]
+    )
+
+
+def test_exhausted_daily_unverified_quota_is_not_a_failure_and_state_is_still_saved(monkeypatch, tmp_path):
+    """Regression: once the daily cap was spent and no verified offer existed, send_offers
+    legitimately sent nothing, but run() read 'nothing delivered' as a Telegram failure.
+    It returned 1 before persisting history/Supabase and fired a false alert every run."""
+    _unverified_only_setup(monkeypatch, tmp_path)
+    from datetime import datetime, timezone
+
+    today = datetime.now(timezone.utc).date().isoformat()
+    (tmp_path / "alert_budget.json").write_text(
+        json.dumps({"date": today, "unverified": main_fast.DAILY_UNVERIFIED_CAP}), encoding="utf-8"
+    )
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: [])   # nothing sendable
+    mirror = FakeMirror()
+    monkeypatch.setattr(main_fast.SupabaseSync, "from_env", classmethod(lambda cls: mirror))
+
+    assert main_fast.run() == 0
+
+    history = json.loads((tmp_path / "price_history.json").read_text(encoding="utf-8"))
+    assert history["sodimac:1"] == [{"date": "2026-10-01", "price": 4000}]   # history kept growing
+    assert len(mirror.scans) == 1                                            # and so did Supabase
+
+
+def test_telegram_failing_on_sendable_unverified_offers_is_still_a_failure(monkeypatch, tmp_path):
+    _unverified_only_setup(monkeypatch, tmp_path)           # quota available, so an attempt is made
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: [])   # ...and it all fails
+
+    assert main_fast.run() == 1
