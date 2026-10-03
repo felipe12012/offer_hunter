@@ -1,9 +1,7 @@
 -- Feed for the public web: freshness tracking + a materialized view that precomputes,
 -- per product, the same "is this discount real?" signals the pipeline uses.
 --
--- NOT YET APPLIED. Validated inside a rolled-back transaction on 2026-10-03:
--- 32,387 rows, 245 with verified_pct >= 10, 231 in category_group 'otros'.
--- Apply with the Supabase MCP `apply_migration` (or the SQL editor), then wire
+-- Applied 2026-10-03 (after validating it in a rolled-back transaction). Wire
 -- `offer_refresh_feed()` into the pipeline (see docs/superpowers/plans/2026-10-03-offers-web.md).
 
 -- 1) Freshness. Products are only rewritten when they change, so without this a
@@ -105,14 +103,17 @@ agg as (
 ),
 feed as (
   select p.id, p.store, p.title, p.url, p.image_url, p.category,
+         -- Pattern based (not exact lists), so new watchlist words land in the right
+         -- group without a migration. `category` is the group label of a category scan
+         -- or the search word of a keyword scan, so this is an approximation.
          case
-           when lower(p.category) in ('tecnologia','notebook','audifonos','tablet','sony','parlante','televisor','smart tv','celular','consola','monitor') then 'tecnologia'
-           when lower(p.category) in ('muebles','sillon','sofa','cama','colchon','escritorio','comedor') then 'muebles'
-           when lower(p.category) in ('zapatillas','zapatilla','zapatillas niño','zapatillas mujer','adidas','nike','puma','skechers','converse','vans','reebok','new balance','fila','topper','asics','crocs','salomon','merrell') then 'zapatillas'
-           when lower(p.category) in ('ropa','polera','pantalon','chaqueta','ropa bebe') then 'ropa'
-           when lower(p.category) in ('belleza','crema facial','kerastase','redken') then 'belleza'
-           when lower(p.category) in ('mascotas','alimento perro','perro') then 'mascotas'
-           when lower(p.category) in ('herramientas','taladro') then 'herramientas'
+           when lower(p.category) ~ 'zapat|adidas|nike|puma|skechers|converse|vans|reebok|new balance|fila|topper|asics|crocs|salomon|merrell|hush' then 'zapatillas'
+           when lower(p.category) ~ 'ropa|polera|pantal|chaqueta|vestido|jeans|buzo|parka|abrigo|moda' then 'ropa'
+           when lower(p.category) ~ 'kerastase|redken|belleza|crema|facial|dermo|hidratante|solar|serum|micelar|acido|vitamina|retinol|roche|cerave|vichy|eucerin|avene|isdin|perfume|maquillaje|blond|capilar' then 'belleza'
+           when lower(p.category) ~ 'mascota|perro|gato|nyd|n&d|alimento|arena|snack' then 'mascotas'
+           when lower(p.category) ~ 'colchon|mueble|sillon|sofa|cama|escritorio|comedor|living|closet' then 'muebles'
+           when lower(p.category) ~ 'tecnolog|notebook|tablet|audifono|sony|parlante|televis|smart tv|celular|consola|monitor|videojuego|computador|smartphone' then 'tecnologia'
+           when lower(p.category) ~ 'herramienta|taladro' then 'herramientas'
            else 'otros'
          end as category_group,
          p.price, p.list_price,

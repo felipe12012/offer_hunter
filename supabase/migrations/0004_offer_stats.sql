@@ -1,10 +1,9 @@
 -- Fase 1.2 del plan docs/superpowers/plans/2026-10-03-offers-web.md
 -- Estadísticas de portada para la web (offer_stats()).
 --
--- NO APLICADA. El SQL de abajo viene del plan y no está probado en producción:
--- valídalo dentro de `begin; … rollback;` antes de aplicarlo, y comprueba que
--- devuelve el JSON esperado. Requiere que 0002_offer_feed.sql ya esté aplicada
--- (necesita la vista offer_feed y su columna last_seen_at).
+-- APLICADA el 2026-10-03, tras validarla dentro de una transacción deshecha
+-- (devolvió 22.092 productos vigentes, 19 tiendas y los grupos esperados).
+-- Requiere 0002_offer_feed.sql (la vista offer_feed y su columna last_seen_at).
 --
 -- `security invoker`: respeta el RLS/permisos de quien llama; no da acceso a
 -- nada extra, y solo service_role tiene EXECUTE.
