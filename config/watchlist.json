@@ -39,7 +39,16 @@
     "ropa bebe",
     "crema facial",
     "kerastase",
-    "redken"
+    "redken",
+    "zapatillas hombre",
+    "zapatillas bebe",
+    "kerastase blond",
+    "colchon 1 plaza",
+    "ropa mujer",
+    "ropa hombre",
+    "videojuegos",
+    "consola",
+    "comida gato nyd"
   ],
   "min_discount_pct": 30,
   "min_real_discount_pct": 15,
@@ -150,8 +159,33 @@
       "chaqueta",
       "vestido",
       "jeans",
-      "ropa niño"
-    ]
+      "ropa niño",
+      "zapatillas hombre",
+      "zapatillas bebe",
+      "kerastase blond",
+      "colchon 1 plaza",
+      "videojuegos",
+      "ropa mujer",
+      "ropa hombre"
+    ],
+    "deep_slugs": [
+      "zapatillas-mujer",
+      "zapatillas-hombre",
+      "zapatillas-bebe",
+      "ropa-de-bebe",
+      "moda-mujer",
+      "moda-hombre",
+      "colchon-1-plaza",
+      "tablets",
+      "consolas",
+      "videojuegos",
+      "poleras-hombre",
+      "pantalones-hombre",
+      "blusas-mujer",
+      "ropa-deportiva-mujer",
+      "ropa-deportiva-hombre"
+    ],
+    "deep_pages": 10
   },
   "alerts": {
     "tiers": [
@@ -171,5 +205,364 @@
     "warn_from_pct": 80,
     "silent_below_pct": 80,
     "alert_chat_min_pct": 80
+  },
+  "priority": {
+    "min_discount_pct": 20,
+    "max_per_run": 10,
+    "daily_cap": 200,
+    "rules": [
+      {
+        "label": "Zapatillas bebé",
+        "all": [
+          [
+            "zapatilla"
+          ],
+          [
+            "bebe",
+            "baby",
+            "recien nacido"
+          ]
+        ]
+      },
+      {
+        "label": "Zapatillas mujer",
+        "all": [
+          [
+            "zapatilla"
+          ],
+          [
+            "mujer",
+            "dama",
+            "femenin"
+          ]
+        ]
+      },
+      {
+        "label": "Zapatillas hombre",
+        "all": [
+          [
+            "zapatilla"
+          ],
+          [
+            "hombre",
+            "varon",
+            "masculin",
+            "caballero"
+          ]
+        ]
+      },
+      {
+        "label": "Kerastase Blond",
+        "all": [
+          [
+            "kerastase"
+          ],
+          [
+            "blond"
+          ]
+        ]
+      },
+      {
+        "label": "Colchón 1 plaza",
+        "all": [
+          [
+            "colchon"
+          ],
+          [
+            "1 plaza",
+            "1plaza",
+            "una plaza",
+            "individual"
+          ]
+        ],
+        "none": [
+          "cubrecolchon",
+          "cuna",
+          "inflable",
+          "protector",
+          "sabana",
+          "funda",
+          "topper",
+          "faldon",
+          "almohada",
+          "cubre"
+        ]
+      },
+      {
+        "label": "Tablet",
+        "all": [
+          [
+            "tablet",
+            "ipad",
+            "galaxy tab",
+            "matepad",
+            "lenovo tab",
+            "redmi pad",
+            "xiaomi pad"
+          ]
+        ],
+        "none": [
+          "funda",
+          "carcasa",
+          "mica",
+          "lamina",
+          "protector",
+          "soporte",
+          "lapiz",
+          "stylus",
+          "teclado",
+          "cargador",
+          "cable",
+          "vidrio",
+          "audifono",
+          "grafica",
+          "dibujo",
+          "wacom",
+          "accesorio"
+        ]
+      },
+      {
+        "label": "Consolas",
+        "all": [
+          [
+            "consola"
+          ]
+        ],
+        "none": [
+          "recibidor",
+          "mueble",
+          "mesa",
+          "rack",
+          "bano",
+          "entrada",
+          "funda",
+          "soporte",
+          "=control",
+          "mando",
+          "joystick",
+          "cable",
+          "cargador",
+          "audifono",
+          "skin",
+          "televisor"
+        ]
+      },
+      {
+        "label": "Videojuegos",
+        "all": [
+          [
+            "videojuego",
+            "playstation",
+            "xbox",
+            "nintendo",
+            "=ps5",
+            "=ps4",
+            "juego ps",
+            "juego xbox",
+            "juego switch"
+          ]
+        ],
+        "none": [
+          "silla",
+          "escritorio",
+          "audifono",
+          "teclado",
+          "mouse",
+          "monitor",
+          "notebook",
+          "polera",
+          "peluche",
+          "figura",
+          "poster",
+          "funda",
+          "soporte",
+          "cable",
+          "cargador",
+          "=control",
+          "mando",
+          "joystick"
+        ]
+      },
+      {
+        "label": "Comida gato NYD",
+        "all": [
+          [
+            "nyd",
+            "n&d",
+            "farmina"
+          ]
+        ],
+        "none": [
+          "perro",
+          "canino",
+          "dog"
+        ]
+      },
+      {
+        "label": "Ropa mujer",
+        "all": [
+          [
+            "mujer",
+            "dama",
+            "femenin"
+          ],
+          [
+            "polera",
+            "camiseta",
+            "blusa",
+            "vestido",
+            "falda",
+            "pantalon",
+            "jeans",
+            "chaqueta",
+            "abrigo",
+            "parka",
+            "sweater",
+            "chaleco",
+            "poleron",
+            "buzo",
+            "short",
+            "calza",
+            "enterito",
+            "camisa",
+            "top",
+            "ropa",
+            "malla",
+            "bikini",
+            "legging",
+            "jardinera",
+            "cardigan",
+            "cortaviento",
+            "pijama",
+            "traje de bano",
+            "conjunto",
+            "pantaloneta",
+            "bermuda",
+            "chomba",
+            "vestuario",
+            "=moda"
+          ]
+        ],
+        "none": [
+          "zapatilla",
+          "zapato",
+          "calzado",
+          "=bota",
+          "botin",
+          "sandalia",
+          "zueco",
+          "cartera",
+          "bolso",
+          "mochila",
+          "reloj",
+          "joya",
+          "anillo",
+          "collar",
+          "=aros",
+          "pulsera",
+          "billetera",
+          "lente",
+          "perfume",
+          "cinturon",
+          "panuelo",
+          "bufanda",
+          "gorro",
+          "jockey",
+          "maquillaje",
+          "crema",
+          "shampoo",
+          "cosmetic",
+          "bananos",
+          "paraguas",
+          "toalla",
+          "sabana",
+          "edredon",
+          "accesorio"
+        ]
+      },
+      {
+        "label": "Ropa hombre",
+        "all": [
+          [
+            "hombre",
+            "varon",
+            "masculin",
+            "caballero"
+          ],
+          [
+            "polera",
+            "camiseta",
+            "blusa",
+            "vestido",
+            "falda",
+            "pantalon",
+            "jeans",
+            "chaqueta",
+            "abrigo",
+            "parka",
+            "sweater",
+            "chaleco",
+            "poleron",
+            "buzo",
+            "short",
+            "calza",
+            "enterito",
+            "camisa",
+            "top",
+            "ropa",
+            "malla",
+            "bikini",
+            "legging",
+            "jardinera",
+            "cardigan",
+            "cortaviento",
+            "pijama",
+            "traje de bano",
+            "conjunto",
+            "pantaloneta",
+            "bermuda",
+            "chomba",
+            "vestuario",
+            "=moda"
+          ]
+        ],
+        "none": [
+          "zapatilla",
+          "zapato",
+          "calzado",
+          "=bota",
+          "botin",
+          "sandalia",
+          "zueco",
+          "cartera",
+          "bolso",
+          "mochila",
+          "reloj",
+          "joya",
+          "anillo",
+          "collar",
+          "=aros",
+          "pulsera",
+          "billetera",
+          "lente",
+          "perfume",
+          "cinturon",
+          "panuelo",
+          "bufanda",
+          "gorro",
+          "jockey",
+          "maquillaje",
+          "crema",
+          "shampoo",
+          "cosmetic",
+          "bananos",
+          "paraguas",
+          "toalla",
+          "sabana",
+          "edredon",
+          "accesorio"
+        ]
+      }
+    ]
   }
 }

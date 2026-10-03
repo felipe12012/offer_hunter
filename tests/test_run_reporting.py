@@ -385,3 +385,75 @@ def test_a_run_with_no_offers_still_saves_history_and_mirrors_to_supabase(monkey
 
     assert (tmp_path / "price_history.json").exists()
     assert len(mirror.scans) == 1 and len(mirror.runs) == 1
+
+
+# ---- priority quota ----------------------------------------------------------------------
+
+PRIORITY_WATCHLIST = {
+    "categories": ["herramientas"], "keywords": [], "min_discount_pct": 30, "min_real_discount_pct": 15,
+    "verify_advertised_discount": "label",
+    "priority": {"min_discount_pct": 20, "max_per_run": 4, "daily_cap": 6,
+                 "rules": [{"label": "Taladros", "all": [["taladro"]]}]},
+}
+
+
+def priority_run(monkeypatch, tmp_path, unverified_used=0, priority_used=0, deals=None):
+    patch_paths(monkeypatch, tmp_path, PRIORITY_WATCHLIST)
+    today = datetime.now(timezone.utc).date().isoformat()
+    (tmp_path / "alert_budget.json").write_text(
+        json.dumps({"date": today, "unverified": unverified_used, "priority_unverified": priority_used}),
+        encoding="utf-8",
+    )
+    deals = deals if deals is not None else [make_deal(f"sodimac:{i}", 7500, list_price=10000) for i in range(3)]
+    stub_sources(monkeypatch, fetch_sodimac_deals=lambda watchlist: deals)
+    calls = []
+
+    def fake_send(scored, **kw):
+        calls.append(kw)
+        return list(scored)
+
+    monkeypatch.setattr(main_fast, "send_offers", fake_send)
+    return calls
+
+
+def test_priority_offers_are_sent_even_when_the_generic_unverified_quota_is_spent(monkeypatch, tmp_path):
+    calls = priority_run(monkeypatch, tmp_path, unverified_used=main_fast.DAILY_UNVERIFIED_CAP)
+
+    assert main_fast.run() == 0
+
+    assert calls[0]["max_unverified"] == 0
+    assert calls[0]["max_priority_unverified"] == 4            # watchlist max_per_run
+
+
+def test_the_priority_limit_shrinks_to_what_is_left_of_the_daily_cap(monkeypatch, tmp_path):
+    calls = priority_run(monkeypatch, tmp_path, priority_used=4)     # cap 6, used 4 -> 2 left
+
+    assert main_fast.run() == 0
+    assert calls[0]["max_priority_unverified"] == 2
+
+
+def test_delivered_priority_offers_are_counted_in_their_own_daily_budget(monkeypatch, tmp_path):
+    priority_run(monkeypatch, tmp_path)
+
+    assert main_fast.run() == 0
+
+    budget = json.loads((tmp_path / "alert_budget.json").read_text(encoding="utf-8"))
+    assert budget["priority_unverified"] == 3
+    assert budget["unverified"] == 0                                 # the generic quota was not touched
+
+
+def test_nothing_sendable_because_both_quotas_are_spent_is_still_not_a_failure(monkeypatch, tmp_path, capsys):
+    calls = priority_run(
+        monkeypatch, tmp_path, unverified_used=main_fast.DAILY_UNVERIFIED_CAP, priority_used=6
+    )
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: [])
+
+    assert main_fast.run() == 0
+    assert "quota" in capsys.readouterr().err.lower()
+
+
+def test_only_priority_candidates_waiting_with_room_left_is_a_real_attempt(monkeypatch, tmp_path):
+    priority_run(monkeypatch, tmp_path)
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: [])    # telegram swallowed everything
+
+    assert main_fast.run() == 1                                      # eligible and undelivered: a real failure

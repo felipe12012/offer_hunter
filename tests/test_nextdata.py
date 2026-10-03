@@ -215,3 +215,44 @@ def test_fetch_store_deals_survives_one_failing_scan():
 
     deals = nextdata.fetch_store_deals(CFG, watchlist, fetch=fake_fetch, fetch_home=lambda u: "", sleep=lambda s: None)
     assert len(deals) == 4
+
+
+def test_category_jobs_carry_the_slug_as_a_hint_for_priority_matching():
+    watchlist = {"keywords": [], "scan": {"category_patterns": {"zapatillas": ["zapatillas-mujer"]},
+                                         "max_category_pages": 1}}
+
+    def fake_fetch(url):
+        data = props()
+        data["pagination"] = {"count": 4, "perPage": 48, "currentPage": 1}
+        return data
+
+    home = '<a href="/falabella-cl/category/cat1/Zapatillas-Mujer">z</a>'
+    deals = nextdata.fetch_store_deals(CFG, watchlist, fetch=fake_fetch, fetch_home=lambda url: home, sleep=lambda s: None)
+
+    assert deals and all(d.hint == "Zapatillas Mujer" for d in deals)
+    assert all(d.category == "zapatillas" for d in deals)           # the group label is unchanged
+
+
+def test_deep_slugs_are_scanned_with_more_pages_than_ordinary_categories():
+    watchlist = {"keywords": [], "scan": {
+        "category_patterns": {"ropa": ["moda", "ropa-de"]},
+        "deep_slugs": ["moda-mujer"], "deep_pages": 3, "max_category_pages": 1,
+    }}
+    pages_per_category = {}
+
+    def fake_fetch(url):
+        key = url.split("/category/")[1].split("/")[1].split("?")[0]
+        pages_per_category[key] = pages_per_category.get(key, 0) + 1
+        data = props()
+        for result in data["results"]:
+            result["productId"] += f"{key}{pages_per_category[key]}"
+        data["pagination"] = {"count": 480, "perPage": 48, "currentPage": 1}
+        data["currentUrl"] = url.split("falabella.com")[1].split("?")[0]   # as the real site reports it
+        return data
+
+    home = ('<a href="/falabella-cl/category/cat1/Moda-Mujer">a</a>'
+            '<a href="/falabella-cl/category/cat2/Ropa-de-bebe">b</a>')
+    nextdata.fetch_store_deals(CFG, watchlist, fetch=fake_fetch, fetch_home=lambda url: home, sleep=lambda s: None)
+
+    assert pages_per_category["Moda-Mujer"] == 3        # deep
+    assert pages_per_category["Ropa-de-bebe"] == 1      # ordinary

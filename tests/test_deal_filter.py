@@ -153,3 +153,45 @@ def test_label_mode_still_rejects_small_discounts():
 
 def test_strict_mode_is_unchanged_and_still_rejects_unconfirmed_discounts():
     assert evaluate(make_deal(6990, 9990), WATCHLIST, {}) is None
+
+
+# ---- priority interests ----------------------------------------------------------------
+
+PRIORITY_WATCHLIST = {
+    **WATCHLIST,
+    "verify_advertised_discount": "label",
+    "priority": {"min_discount_pct": 20, "rules": [{"label": "Taladros", "all": [["taladro"]]}]},
+}
+
+
+def test_a_priority_product_gets_its_label_and_a_lower_discount_bar():
+    deal = make_deal(7500, 10000)                      # -25%: below the global 30%, above the priority 20%
+    result = evaluate(deal, PRIORITY_WATCHLIST, {})
+    assert result is not None
+    assert result.priority == "Taladros"
+    assert result.advertised_confirmed is False        # still honest about not being verified
+
+
+def test_a_non_priority_product_with_the_same_discount_still_needs_the_global_bar():
+    deal = make_deal(7500, 10000, category="herramientas", title="Sierra circular")   # matches the watchlist, not a priority
+    assert evaluate(deal, PRIORITY_WATCHLIST, {}) is None
+
+
+def test_non_priority_offers_have_no_priority_label():
+    deal = make_deal(6000, 10000, category="herramientas", title="Sierra circular")    # -40%
+    result = evaluate(deal, PRIORITY_WATCHLIST, {})
+    assert result is not None and result.priority is None
+
+
+def test_the_priority_bar_is_not_below_zero_when_not_configured():
+    watchlist = {**WATCHLIST, "verify_advertised_discount": "label",
+                 "priority": {"rules": [{"label": "Taladros", "all": [["taladro"]]}]}}
+    assert evaluate(make_deal(7500, 10000), watchlist, {}) is None       # no min_discount_pct: global bar applies
+    assert evaluate(make_deal(6000, 10000), watchlist, {}).priority == "Taladros"
+
+
+def test_priority_matching_uses_the_store_category_hint():
+    deal = make_deal(6000, 10000, category="herramientas", title="Percutor 650W")
+    hinted = Deal(**{**deal.__dict__, "hint": "Taladros Electricos"})
+    assert evaluate(deal, PRIORITY_WATCHLIST, {}).priority is None
+    assert evaluate(hinted, PRIORITY_WATCHLIST, {}).priority == "Taladros"

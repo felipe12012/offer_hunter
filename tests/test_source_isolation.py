@@ -13,6 +13,8 @@ STORES = {
     "ripley": "ripley_sample.html",
     "tottus": "tottus_sample.html",
     "hites": "hites_sample.html",
+    "lapolar": "lapolar_sample.html",
+    "tricot": "tricot_sample.html",
 }
 
 

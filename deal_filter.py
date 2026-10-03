@@ -1,4 +1,5 @@
 from models import Deal, ScoredDeal
+from priority import first_match, rules_from
 
 
 def _matches_watchlist(deal: Deal, watchlist: dict) -> bool:
@@ -42,11 +43,17 @@ def _format_clp(amount: int) -> str:
 
 
 def evaluate(deal: Deal, watchlist: dict, history: dict) -> ScoredDeal | None:
-    if not _matches_watchlist(deal, watchlist):
+    priority_config = watchlist.get("priority") or {}
+    priority_label = first_match(rules_from(priority_config), deal.category, deal.title, deal.hint)
+    # A priority interest is always of interest, whatever the generic watchlist says.
+    if priority_label is None and not _matches_watchlist(deal, watchlist):
         return None
 
     min_discount_pct = watchlist.get("min_discount_pct", 0)
     min_real_discount_pct = watchlist.get("min_real_discount_pct", 0)
+    if priority_label is not None and priority_config.get("min_discount_pct") is not None:
+        # Priority products are worth hearing about at a smaller discount.
+        min_discount_pct = min(min_discount_pct, priority_config["min_discount_pct"])
 
     reasons = []
     qualifies = False
@@ -96,4 +103,5 @@ def evaluate(deal: Deal, watchlist: dict, history: dict) -> ScoredDeal | None:
         reasons=reasons,
         verified_pct=verified_pct,
         advertised_confirmed=advertised_confirmed or deal.discount_pct <= 0,
+        priority=priority_label,
     )

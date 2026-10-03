@@ -19,6 +19,11 @@ MAX_MESSAGES_PER_RUN = 25
 # run, separately from the verified quota. They are the 99% of qualifying offers
 # and the ones most likely to be inflated "always 60% off" prices.
 MAX_UNVERIFIED_PER_RUN = 5
+# Priority interests (watchlist "priority") have their own quota for unconfirmed
+# discounts, on top of the generic one, so they never compete with it.
+MAX_PRIORITY_UNVERIFIED_PER_RUN = 10
+# A verified discount at or above this always goes first, priority or not.
+BIG_VERIFIED_PCT = 60
 MAX_CAPTION_LENGTH = 1024
 MAX_TITLE_LENGTH = 180
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
@@ -70,10 +75,16 @@ def _rank_key(scored: ScoredDeal) -> float:
     return max(scored.real_discount_pct, scored.deal.discount_pct)
 
 
-def _order_key(scored: ScoredDeal) -> tuple[float, float]:
-    """Sort key: verified discount first, the store's own percentage only as a
-    tie-break (so unverified offers rank below every verified one)."""
-    return (_rank_key(scored), scored.deal.discount_pct)
+def _order_key(scored: ScoredDeal) -> tuple[bool, bool, float, float]:
+    """Sort key, best first: a big verified discount, then priority interests, then
+    the verified discount; the store's own percentage is only a tie-break (so
+    unverified offers rank below every verified one of the same kind)."""
+    return (
+        _rank_key(scored) >= BIG_VERIFIED_PCT,
+        bool(scored.priority),
+        _rank_key(scored),
+        scored.deal.discount_pct,
+    )
 
 
 def _format_clp(amount: int) -> str:
@@ -108,6 +119,8 @@ def format_offer(
     else:
         lines = [f"🔥 <b>{html.escape(title)}</b>"]
     lines.append(f"🏬 {html.escape(deal.store.title())}")
+    if scored.priority:
+        lines.append(f"⭐ Prioridad: {html.escape(scored.priority)}")
 
     price_line = f"💰 <b>{_format_clp(deal.price)}</b>"
     unconfirmed_claim = not scored.advertised_confirmed and deal.discount_pct > 0
@@ -201,6 +214,8 @@ def _to_jpeg(data: bytes) -> bytes | None:
 
 
 def _is_silent(scored: ScoredDeal, config: dict) -> bool:
+    if scored.priority and scored.advertised_confirmed:
+        return False  # a verified priority offer is worth a sound
     threshold = config.get("silent_below_pct")
     return threshold is not None and _rank_key(scored) < threshold
 
@@ -334,6 +349,7 @@ def send_offers(
     alert_chat_id: str | None = None,
     alert_thread_id: str | int | None = None,
     max_unverified: int | None = None,
+    max_priority_unverified: int | None = None,
 ) -> list[ScoredDeal]:
     """Send each offer as its own Telegram message (photo + caption + link button).
 
@@ -344,6 +360,8 @@ def send_offers(
     Verified offers get the full ``MAX_MESSAGES_PER_RUN`` quota; unconfirmed
     advertised discounts are limited to ``max_unverified`` (default
     ``MAX_UNVERIFIED_PER_RUN``, and the caller can shrink it for a daily cap).
+    Unconfirmed *priority* offers have a separate quota, ``max_priority_unverified``
+    (default ``MAX_PRIORITY_UNVERIFIED_PER_RUN``), outside both of those.
 
     Returns the offers that were actually delivered, in send order, so the
     caller can mark only those as seen and retry the rest on the next run."""
@@ -360,13 +378,24 @@ def send_offers(
     alert_min = _alerts(alerts)["alert_chat_min_pct"]
 
     verified = [scored for scored in scored_deals if scored.advertised_confirmed]
-    unverified = [scored for scored in scored_deals if not scored.advertised_confirmed]
+    priority_unverified = [s for s in scored_deals if not s.advertised_confirmed and s.priority]
+    other_unverified = [s for s in scored_deals if not s.advertised_confirmed and not s.priority]
 
     ordered = _round_robin_by_category(_dedupe_by_title(verified), MAX_MESSAGES_PER_RUN)
     room = MAX_MESSAGES_PER_RUN - len(ordered)
     limit = MAX_UNVERIFIED_PER_RUN if max_unverified is None else max_unverified
     if room > 0 and limit > 0:
-        ordered += _round_robin_by_category(_dedupe_by_title(unverified), min(limit, room))
+        ordered += _round_robin_by_category(_dedupe_by_title(other_unverified), min(limit, room))
+    priority_limit = (
+        MAX_PRIORITY_UNVERIFIED_PER_RUN if max_priority_unverified is None else max_priority_unverified
+    )
+    if priority_limit > 0:
+        ordered += _round_robin_by_category(_dedupe_by_title(priority_unverified), priority_limit)
+
+    # Selection is done. Priority interests go out first; the sort is stable, so the
+    # category interleaving chosen above is kept for everything else (and inside the
+    # priority group).
+    ordered.sort(key=lambda scored: not scored.priority)
 
     delivered: list[ScoredDeal] = []
     photo_messages = 0

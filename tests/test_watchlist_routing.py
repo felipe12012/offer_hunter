@@ -9,7 +9,13 @@ def test_browser_shoe_stores_get_only_footwear_keywords():
     narrowed = main_fast.watchlist_for("nike", watchlist)
 
     assert narrowed["keywords"] == main_fast.BROWSER_SHOE_KEYWORDS
-    assert narrowed["keywords"] == ["zapatillas", "zapatilla"]
+    assert narrowed["keywords"][:2] == ["zapatillas", "zapatilla"]
+
+
+def test_browser_shoe_stores_also_search_the_priority_footwear_segments():
+    keywords = main_fast.watchlist_for("converse", {"keywords": []})["keywords"]
+    for segment in ("zapatillas mujer", "zapatillas hombre", "zapatillas bebe"):
+        assert segment in keywords
 
 
 def test_pharmacies_get_the_dermocosmetics_first_keyword_list():
@@ -18,7 +24,13 @@ def test_pharmacies_get_the_dermocosmetics_first_keyword_list():
     for store in ("salcobrand", "cruzverde", "ahumada"):
         narrowed = main_fast.watchlist_for(store, watchlist)
         assert narrowed["keywords"] == main_fast.PHARMACY_KEYWORDS
-        assert narrowed["keywords"][0] == "dermocosmetica"
+        assert "dermocosmetica" in narrowed["keywords"]
+
+
+def test_pharmacies_search_kerastase_blond_before_anything_else():
+    # A priority interest: searched first, so a slow pharmacy cannot time out before it.
+    for store in ("salcobrand", "cruzverde", "ahumada"):
+        assert main_fast.watchlist_for(store, {"keywords": []})["keywords"][0] == "kerastase blond"
 
 
 def test_non_shoe_stores_keep_the_full_watchlist():

@@ -13,6 +13,9 @@ class Deal:
     discount_pct: float
     scraped_at: str
     image_url: str = ""
+    # Extra text used only to recognise priority interests (the store's own category
+    # name, e.g. "Zapatillas Mujer"). Not stored anywhere.
+    hint: str = ""
 
 
 @dataclass(frozen=True)
@@ -26,3 +29,5 @@ class ScoredDeal:
     # of the two, the pre-verification behaviour).
     verified_pct: float | None = None
     advertised_confirmed: bool = True
+    # Label of the priority interest this offer matches (see priority.py), or None.
+    priority: str | None = None

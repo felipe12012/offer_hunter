@@ -11,7 +11,7 @@ import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from urllib.parse import parse_qsl, quote, urlencode, urljoin, urlsplit, urlunsplit
 
@@ -88,7 +88,7 @@ def _price_values(result: dict) -> dict[str, int]:
     return values
 
 
-def _deal_from_result(result: dict, cfg: StoreConfig, category: str) -> Deal | None:
+def _deal_from_result(result: dict, cfg: StoreConfig, category: str, hint: str = "") -> Deal | None:
     product_id = result.get("productId")
     if not product_id:
         return None
@@ -123,14 +123,15 @@ def _deal_from_result(result: dict, cfg: StoreConfig, category: str) -> Deal | N
         discount_pct=discount_pct,
         scraped_at=datetime.now(timezone.utc).isoformat(),
         image_url=media[0] if media else "",
+        hint=hint,
     )
 
 
-def parse_results(page_props: dict, cfg: StoreConfig, category: str) -> list[Deal]:
+def parse_results(page_props: dict, cfg: StoreConfig, category: str, hint: str = "") -> list[Deal]:
     deals: list[Deal] = []
     seen: set[str] = set()
     for result in page_props.get("results", []):
-        deal = _deal_from_result(result, cfg, category)
+        deal = _deal_from_result(result, cfg, category, hint)
         if deal is not None and deal.id not in seen:
             seen.add(deal.id)
             deals.append(deal)
@@ -151,6 +152,7 @@ def scan_listing(
     max_pages: int,
     fetch=fetch_page_props,
     sleep=time.sleep,
+    hint: str = "",
 ) -> list[Deal]:
     """Read a search/category listing page by page, up to ``max_pages``."""
     deals: dict[str, Deal] = {}
@@ -159,7 +161,7 @@ def scan_listing(
         if page > 1:
             sleep(REQUEST_DELAY_SECONDS)
         props = fetch(page_url if page == 1 else with_page(page_url, page))
-        new = [d for d in parse_results(props, cfg, category) if d.id not in deals]
+        new = [d for d in parse_results(props, cfg, category, hint) if d.id not in deals]
         for deal in new:
             deals[deal.id] = deal
         if page == 1 and props.get("currentUrl"):
@@ -198,6 +200,16 @@ def discover_categories(
     return found[:limit]
 
 
+def _merge_hint(existing: Deal, other: Deal) -> Deal:
+    """The same product often turns up in several scans (a category and a keyword
+    search). The first one is kept, but what the others called it is remembered, so
+    priority matching sees every name the store gave it."""
+    extra = f"{other.category} {other.hint}".strip()
+    if extra and extra not in existing.hint:
+        return replace(existing, hint=f"{existing.hint} {extra}".strip())
+    return existing
+
+
 def fetch_store_deals(
     cfg: StoreConfig,
     watchlist: dict,
@@ -209,7 +221,9 @@ def fetch_store_deals(
     max_search = scan.get("max_search_pages", DEFAULT_MAX_SEARCH_PAGES)
     max_category = scan.get("max_category_pages", DEFAULT_MAX_CATEGORY_PAGES)
 
-    jobs: list[tuple[str, str, int]] = []  # (category label, start url, max pages)
+    deep_slugs = {slug.lower() for slug in scan.get("deep_slugs", [])}
+    deep_pages = scan.get("deep_pages", max_category)
+    jobs: list[tuple[str, str, int, str]] = []  # (category label, start url, max pages, hint)
     patterns = scan.get("category_patterns", {})
     if patterns:
         try:
@@ -220,14 +234,19 @@ def fetch_store_deals(
             health.warn(cfg.store, f"{cfg.store} category discovery failed: {exc}")
             categories = []
         for group, category_id, slug in categories:
-            jobs.append((group, cfg.category_url.format(id=category_id, slug=slug), max_category))
+            # Priority categories are read deeper; the slug travels as a hint so a
+            # "Moda Mujer" product is recognised as women's clothing even when its
+            # title never says so.
+            pages = deep_pages if slug.lower() in deep_slugs else max_category
+            hint = slug.replace("-", " ").replace("_", " ")
+            jobs.append((group, cfg.category_url.format(id=category_id, slug=slug), pages, hint))
     for keyword in watchlist.get("keywords", []):
-        jobs.append((keyword, cfg.search_url.format(query=quote(keyword)), max_search))
+        jobs.append((keyword, cfg.search_url.format(query=quote(keyword)), max_search, ""))
 
     def run(job):
-        label, url, pages = job
+        label, url, pages, hint = job
         try:
-            return scan_listing(url, cfg, label, pages, fetch=fetch, sleep=sleep), None
+            return scan_listing(url, cfg, label, pages, fetch=fetch, sleep=sleep, hint=hint), None
         except Exception as exc:
             return [], f"{cfg.store} scan of {url} failed: {exc}"
 
@@ -241,7 +260,10 @@ def fetch_store_deals(
             failures += 1
             health.warn(cfg.store, error)
         for deal in found:
-            deals.setdefault(deal.id, deal)
+            if deal.id in deals:
+                deals[deal.id] = _merge_hint(deals[deal.id], deal)
+            else:
+                deals[deal.id] = deal
 
     if jobs and failures == len(jobs):
         raise RuntimeError(f"All {cfg.store} scans failed")

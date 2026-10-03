@@ -631,3 +631,78 @@ def test_send_alert_reports_failure_instead_of_raising(monkeypatch):
     rec = Recorder(fail_methods=("sendMessage",))
     install(monkeypatch, rec)
     assert send_alert("x", bot_token="tok", chat_id="123") is False
+
+
+# ---- priority offers --------------------------------------------------------------------
+
+def _prio(deal_id, pct=30.0, confirmed=True, label="Zapatillas mujer", store="sodimac"):
+    base = make_scored(deal_id, store=store, discount_pct=pct, real_discount_pct=pct if confirmed else 0.0)
+    return ScoredDeal(deal=base.deal, real_discount_pct=base.real_discount_pct, reasons=["-x%"],
+                      verified_pct=pct if confirmed else 0.0, advertised_confirmed=confirmed, priority=label)
+
+
+def test_priority_offers_are_tagged_in_the_message():
+    text = format_offer(_prio("sodimac:1"))
+    assert "⭐" in text and "Zapatillas mujer" in text
+    assert "⭐" not in format_offer(make_scored("sodimac:2"))
+
+
+def test_priority_goes_after_big_verified_discounts_but_before_the_rest():
+    ordinary = _verified("sodimac:ordinary", 45.0)
+    ordinary = ScoredDeal(deal=ordinary.deal, real_discount_pct=45.0, reasons=ordinary.reasons,
+                          verified_pct=45.0, advertised_confirmed=True)
+    big = _verified("sodimac:big", 85.0)
+    prio = _prio("sodimac:prio", pct=25.0)
+    from notifier import _order_key
+
+    ranked = sorted([ordinary, prio, big], key=_order_key, reverse=True)
+
+    assert [o.deal.id for o in ranked] == ["sodimac:big", "sodimac:prio", "sodimac:ordinary"]
+
+
+def test_unverified_priority_offers_have_their_own_quota_next_to_the_unverified_cap(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    offers = (
+        [_unverified(f"sodimac:u{i}", 50.0 + i, store=f"s{i}") for i in range(8)]
+        + [_prio(f"sodimac:p{i}", pct=40.0 + i, confirmed=False, store=f"t{i}") for i in range(8)]
+    )
+
+    sent = send_offers(offers, bot_token="tok", chat_id="123", max_unverified=3, max_priority_unverified=6)
+
+    assert sum(1 for o in sent if o.priority) == 6
+    assert sum(1 for o in sent if not o.priority) == 3          # ordinary unverified keep their own, smaller cap
+
+
+def test_priority_unverified_quota_can_be_zero(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    offers = [_prio(f"sodimac:p{i}", confirmed=False, store=f"t{i}") for i in range(3)]
+    assert send_offers(offers, bot_token="tok", chat_id="123", max_unverified=5, max_priority_unverified=0) == []
+
+
+def test_a_verified_priority_offer_rings_even_when_small_offers_are_silent(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    send_offers([_prio("sodimac:1", pct=35.0, confirmed=True)], bot_token="tok", chat_id="MAIN",
+                alerts={"silent_below_pct": 80})
+    assert "disable_notification" not in rec.calls[0][1]
+
+
+def test_an_unverified_priority_offer_stays_silent_like_other_unverified_ones(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    send_offers([_prio("sodimac:1", pct=35.0, confirmed=False)], bot_token="tok", chat_id="MAIN",
+                alerts={"silent_below_pct": 80})
+    assert rec.calls[0][1]["disable_notification"] is True
+
+
+def test_priority_offers_are_sent_first_within_a_run(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    offers = [_verified("sodimac:ordinary", 45.0, store="a"), _prio("sodimac:prio", pct=25.0, store="b")]
+
+    send_offers(offers, bot_token="tok", chat_id="123")
+
+    urls = _urls(rec)
+    assert "prio" in urls[0] and "ordinary" in urls[1]

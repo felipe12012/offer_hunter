@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from deal_filter import evaluate
 from dedup import deal_key, load_seen, mark_seen
 from models import Deal, ScoredDeal
-from notifier import send_alert, send_offers
+from notifier import MAX_PRIORITY_UNVERIFIED_PER_RUN, send_alert, send_offers
 from price_history import load_price_history, save_price_history, update_price_history
 from reports import StoreReport, build_report, format_log, store_transitions, to_json, to_markdown
 from sources import health
@@ -28,6 +28,7 @@ from sources.falabella import fetch_deals as fetch_falabella_deals
 from sources.fila import fetch_deals as fetch_fila_deals
 from sources.hites import fetch_deals as fetch_hites_deals
 from sources.hushpuppies import fetch_deals as fetch_hushpuppies_deals
+from sources.lapolar import fetch_deals as fetch_lapolar_deals
 from sources.merrell import fetch_deals as fetch_merrell_deals
 from sources.newbalance import fetch_deals as fetch_newbalance_deals
 from sources.nike import fetch_deals as fetch_nike_deals
@@ -40,6 +41,7 @@ from sources.salomon import fetch_deals as fetch_salomon_deals
 from sources.skechers import fetch_deals as fetch_skechers_deals
 from sources.sodimac import fetch_deals as fetch_sodimac_deals
 from sources.tottus import fetch_deals as fetch_tottus_deals
+from sources.tricot import fetch_deals as fetch_tricot_deals
 from sources.vans import fetch_deals as fetch_vans_deals
 
 # The single roster of registered sources as (store, module attribute name).
@@ -68,6 +70,8 @@ SOURCE_FETCHERS = [
     ("salcobrand", "fetch_salcobrand_deals"),
     ("cruzverde", "fetch_cruzverde_deals"),
     ("ahumada", "fetch_ahumada_deals"),
+    ("lapolar", "fetch_lapolar_deals"),
+    ("tricot", "fetch_tricot_deals"),
 ]
 SOURCE_NAMES = [attr for _store, attr in SOURCE_FETCHERS]
 
@@ -77,13 +81,22 @@ SOURCE_NAMES = [attr for _store, attr in SOURCE_FETCHERS]
 BROWSER_SHOE_STORES = {
     "nike", "converse", "puma", "newbalance", "fila", "skechers",
 }
-BROWSER_SHOE_KEYWORDS = ["zapatillas", "zapatilla"]
+BROWSER_SHOE_KEYWORDS = [
+    "zapatillas",
+    "zapatilla",
+    # priority segments (config/watchlist.json -> priority)
+    "zapatillas mujer",
+    "zapatillas hombre",
+    "zapatillas bebe",
+]
 # Pharmacies: dermocosmetics first (the priority), then other beauty. Kept to a
 # focused list because Salcobrand and Cruz Verde launch one browser per keyword;
 # Ahumada reads HTTP so it shares the same list cheaply.
 PHARMACY_STORES = {"salcobrand", "cruzverde", "ahumada"}
 PHARMACY_KEYWORDS = [
-    # dermocosmetics (priority)
+    # priority interest, first so a slow pharmacy cannot time out before it
+    "kerastase blond",
+    # dermocosmetics
     "dermocosmetica",
     "crema facial",
     "facial",
@@ -128,6 +141,9 @@ SOURCE_TIMEOUT_SECONDS = 420
 # Ceiling on unconfirmed advertised discounts sent per day (across all runs), on
 # top of the per-run cap in notifier. Resets at UTC midnight.
 DAILY_UNVERIFIED_CAP = 60
+# Same idea for the priority interests, which have a quota of their own
+# (overridable in the watchlist's "priority" block).
+DEFAULT_PRIORITY_DAILY_CAP = 200
 
 
 def load_budget(path: Path, today: str) -> dict:
@@ -435,8 +451,20 @@ def run() -> int:
     today = datetime.now(timezone.utc).date().isoformat()
     budget = load_budget(BUDGET_PATH, today)
     unverified_room = max(0, DAILY_UNVERIFIED_CAP - budget.get("unverified", 0))
+    priority_config = watchlist.get("priority") or {}
+    priority_room = max(
+        0, priority_config.get("daily_cap", DEFAULT_PRIORITY_DAILY_CAP) - budget.get("priority_unverified", 0)
+    )
+    priority_limit = min(
+        priority_config.get("max_per_run", MAX_PRIORITY_UNVERIFIED_PER_RUN), priority_room
+    )
     delivered = (
-        send_offers(candidates, alerts=watchlist.get("alerts"), max_unverified=unverified_room)
+        send_offers(
+            candidates,
+            alerts=watchlist.get("alerts"),
+            max_unverified=unverified_room,
+            max_priority_unverified=priority_limit,
+        )
         if candidates
         else []
     )
@@ -450,7 +478,11 @@ def run() -> int:
     # Was anything eligible to be sent at all? Verified offers always are; the
     # unconfirmed ones only while the daily quota has room.
     unverified_candidates = sum(1 for c in candidates if not c.advertised_confirmed)
-    attempted = any(c.advertised_confirmed for c in candidates) or unverified_room > 0
+    attempted = (
+        any(c.advertised_confirmed for c in candidates)
+        or (unverified_room > 0 and any(not c.advertised_confirmed and not c.priority for c in candidates))
+        or (priority_limit > 0 and any(not c.advertised_confirmed and c.priority for c in candidates))
+    )
     quota_limited = bool(candidates) and not attempted
 
     print(f"Deals per store: {_store_summary(deals, watchlist.get('disabled_stores'))}", file=sys.stderr)
@@ -463,8 +495,9 @@ def run() -> int:
     if quota_limited:
         telegram_line = (
             f"nothing sent: {unverified_candidates} unverified candidates are waiting but the daily "
-            f"unverified quota is spent ({budget.get('unverified', 0)}/{DAILY_UNVERIFIED_CAP}) and "
-            f"there are no verified offers"
+            f"quotas are spent (generic {budget.get('unverified', 0)}/{DAILY_UNVERIFIED_CAP}, priority "
+            f"{budget.get('priority_unverified', 0)}/{priority_config.get('daily_cap', DEFAULT_PRIORITY_DAILY_CAP)}) "
+            f"and there are no verified offers"
         )
     else:
         telegram_line = (
@@ -487,12 +520,16 @@ def run() -> int:
     mark_seen(SEEN_PATH, seen_keys, sorted(delivered_keys))
     save_price_history(HISTORY_PATH, history)
     budget["unverified"] = budget.get("unverified", 0) + sum(
-        1 for scored in delivered if not scored.advertised_confirmed
+        1 for scored in delivered if not scored.advertised_confirmed and not scored.priority
+    )
+    budget["priority_unverified"] = budget.get("priority_unverified", 0) + sum(
+        1 for scored in delivered if not scored.advertised_confirmed and scored.priority
     )
     save_budget(BUDGET_PATH, budget)
 
     quota = {
         "unverified_room": unverified_room,
+        "priority_room": priority_room,
         "eligible": attempted,
         "delivered": len(delivered),
         "quota_limited": quota_limited,
