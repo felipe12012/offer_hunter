@@ -1,4 +1,4 @@
-name: Probe New Stores
+name: Probe SFCC Stores
 
 on:
   workflow_dispatch: {}
@@ -6,87 +6,60 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: HTTP probe
+      - name: SFCC discovery
         run: |
-          pip install requests curl_cffi
+          pip install requests beautifulsoup4
           python - <<'PY'
+          import re
           import requests
-          from curl_cffi import requests as creq
+          from bs4 import BeautifulSoup
 
           UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36", "Accept-Language": "es-CL,es;q=0.9"}
-          SITES = {
-              "lapolar": ("https://www.lapolar.cl", "https://lapolar.cl"),
-              "tricot": ("https://www.tricot.cl", "https://tricot.cl"),
-              "laika": ("https://www.laika.cl", "https://laika.cl"),
-          }
-          for name, (www, apex) in SITES.items():
-              for host in (www, apex):
-                  try:
-                      r = requests.get(host, headers=UA, timeout=25, allow_redirects=True)
-                      low = r.text.lower()
-                      markers = [m for m in ("vtex","shopify","magento","__next_data__","demandware","cloudflare","just a moment","captcha") if m in low]
-                      print(f"HOME {name} {host} -> {r.status_code} final={r.url[:50]} len={len(r.text)} markers={markers}")
-                  except Exception as e:
-                      print(f"HOME {name} {host} -> ERROR {type(e).__name__}")
-                  for label, path in (
-                      ("vtex", "/api/catalog_system/pub/products/search?ft=polera&_from=0&_to=2"),
-                      ("shopify", "/products.json?limit=3"),
-                      ("vtexio", "/api/io/_v/api/intelligent-search/product_search/polera?count=3"),
-                  ):
-                      for tool, getter in (("req", lambda u: requests.get(u, headers=UA, timeout=25)),
-                                           ("curl", lambda u: creq.get(u, impersonate="chrome", timeout=25))):
-                          try:
-                              rr = getter(host + path)
-                              n = ""
-                              if rr.status_code == 200:
-                                  try:
-                                      data = rr.json()
-                                      n = f" n={len(data)}" if isinstance(data, list) else " non-list"
-                                  except Exception:
-                                      n = " non-json"
-                              if rr.status_code != 404:
-                                  print(f"   {name} {label} [{tool}] -> {rr.status_code}{n} len={len(rr.text)}")
-                          except Exception as e:
-                              pass
+          SITES = {"lapolar/abc": "https://www.abc.cl", "tricot": "https://www.tricot.cl"}
+
+          for name, base in SITES.items():
+              home = requests.get(base + "/", headers=UA, timeout=25).text
+              sites = sorted(set(re.findall(r"Sites-([A-Za-z0-9_-]+)-Site", home)))
+              print(f"SITE {name} base={base} site_ids={sites[:5]}")
+              candidates = sites + ["%s-Site" % name.split("/")[0], name.split("/")[-1] + "-Site"]
+              for sid in dict.fromkeys(candidates):
+                  for locale in ("es_CL", "es-CL", "default"):
+                      url = f"{base}/on/demandware.store/Sites-{sid}/{locale}/Search-UpdateGrid?q=polera&start=0&sz=48"
+                      try:
+                          r = requests.get(url, headers=UA, timeout=25)
+                      except Exception as e:
+                          print(f"   {sid}/{locale} -> ERROR {type(e).__name__}")
+                          continue
+                      body = r.text
+                      soup = BeautifulSoup(body, "html.parser")
+                      counts = {sel: len(soup.select(sel)) for sel in (".product-tile", ".product", "[data-pid]", ".grid-tile", "li.product-grid")}
+                      print(f"   {sid}/{locale} -> {r.status_code} len={len(body)} {counts}")
+                      if any(counts.values()):
+                          cards = soup.select(".product-tile") or soup.select("[data-pid]") or soup.select(".product") or soup.select(".grid-tile")
+                          first = cards[0]
+                          print(f"      first pid={first.get('data-pid')} text={first.get_text(' ', strip=True)[:90]!r}")
+                          break
           PY
-      - name: Browser search render
+      - name: Laika discovery
         run: |
-          pip install patchright
-          patchright install chromium >/dev/null 2>&1 || true
+          pip install requests
           python - <<'PY'
-          from patchright.sync_api import sync_playwright
-          UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
-          SITES = {"lapolar": "https://www.lapolar.cl/", "tricot": "https://www.tricot.cl/", "laika": "https://www.laika.cl/"}
-          INPUTS = ["input[type='search']","input[name='q']","input[placeholder*='usca']","input[placeholder*='Busca']","input[aria-label*='usca']","input[name='search']"]
-          with sync_playwright() as p:
-              browser = p.chromium.launch(headless=True)
-              for name, home in SITES.items():
-                  ctx = browser.new_context(user_agent=UA, viewport={"width":1366,"height":900}, locale="es-CL", timezone_id="America/Santiago")
-                  page = ctx.new_page()
-                  try:
-                      page.goto(home, wait_until="domcontentloaded", timeout=45000)
-                      page.wait_for_timeout(4000)
-                      used = None
-                      for sel in INPUTS:
-                          el = page.query_selector(sel)
-                          if el:
-                              el.fill("polera"); used = sel; el.press("Enter"); break
-                      page.wait_for_timeout(8000)
-                      import re
-                      links = page.eval_on_selector_all("a[href]", "els => els.map(e => [e.href, (e.innerText||'').trim()]).filter(x => x[1] && x[1].length > 12)")
-                      prod = [l for l in links if re.search(r"(/p/|/product|/articulo|/pd/|-p-|/\d{6,}|/products/)", l[0])]
-                      print(f"SITE {name} input={used} final={page.url[:70]}")
-                      print(f"     links={len(links)} productish={len(prod)}")
-                      for href, text in prod[:3]:
-                          print(f"       {text[:40]!r} {href[:65]}")
-                  except Exception as e:
-                      print(f"SITE {name} -> ERROR {type(e).__name__}: {str(e)[:60]}")
-                  finally:
-                      ctx.close()
-              browser.close()
+          import requests
+          UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"}
+          for url in ("https://www.laika.cl/", "https://www.laika.cl/tienda", "https://www.laika.cl/shop", "https://laika.com.co/"):
+              try:
+                  r = requests.get(url, headers=UA, timeout=25, allow_redirects=True)
+                  low = r.text.lower()
+                  markers = [m for m in ("vtex","shopify","magento","__next_data__","demandware","nuxt","wix","woocommerce") if m in low]
+                  print(f"LAIKA {url} -> {r.status_code} final={r.url[:50]} len={len(r.text)} markers={markers} title={r.text[:0]}")
+                  i = r.text.lower().find("<title")
+                  if i != -1:
+                      print("   title:", r.text[i:i+150].split(">",1)[-1].split("<")[0][:80])
+              except Exception as e:
+                  print(f"LAIKA {url} -> ERROR {type(e).__name__}")
           PY
