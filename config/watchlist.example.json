@@ -188,7 +188,9 @@
             "kerastase"
           ],
           [
-            "blond"
+            "blond",
+            "rubio",
+            "decolorado"
           ]
         ]
       },
@@ -206,16 +208,22 @@
           ]
         ],
         "none": [
+          "=base",
+          "=cama",
+          "almohada",
+          "camarote",
+          "cubre",
           "cubrecolchon",
           "cuna",
+          "faldon",
+          "funda",
           "inflable",
+          "litera",
           "protector",
           "sabana",
-          "funda",
-          "topper",
-          "faldon",
-          "almohada",
-          "cubre"
+          "somier",
+          "sommier",
+          "topper"
         ]
       },
       {
@@ -223,7 +231,7 @@
         "all": [
           [
             "tablet",
-            "ipad",
+            "=ipad",
             "galaxy tab",
             "matepad",
             "lenovo tab",
@@ -232,23 +240,33 @@
           ]
         ],
         "none": [
-          "funda",
+          "=control",
+          "=mando",
+          "accesorio",
+          "audifono",
+          "cable",
           "carcasa",
-          "mica",
+          "cargador",
+          "dibujo",
+          "funda",
+          "gamepad",
+          "grafica",
+          "joystick",
           "lamina",
+          "lapiz",
+          "mica",
           "protector",
           "soporte",
-          "lapiz",
+          "sticks",
           "stylus",
           "teclado",
-          "cargador",
-          "cable",
           "vidrio",
-          "audifono",
-          "grafica",
-          "dibujo",
-          "wacom",
-          "accesorio"
+          "wacom"
+        ],
+        "not_stores": [
+          "ahumada",
+          "salcobrand",
+          "cruzverde"
         ]
       },
       {
@@ -259,21 +277,29 @@
           ]
         ],
         "none": [
-          "recibidor",
-          "mueble",
-          "mesa",
-          "rack",
-          "bano",
-          "entrada",
-          "funda",
-          "soporte",
+          "=audio",
           "=control",
-          "mando",
-          "joystick",
+          "=dj",
+          "=mezcla",
+          "audifono",
+          "bano",
           "cable",
           "cargador",
-          "audifono",
+          "entrada",
+          "funda",
+          "joystick",
+          "mando",
+          "mesa",
+          "microfono",
+          "mixer",
+          "mueble",
+          "multipista",
+          "podcast",
+          "rack",
+          "recibidor",
           "skin",
+          "sonido",
+          "soporte",
           "televisor"
         ]
       },

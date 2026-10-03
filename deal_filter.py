@@ -44,7 +44,7 @@ def _format_clp(amount: int) -> str:
 
 def evaluate(deal: Deal, watchlist: dict, history: dict) -> ScoredDeal | None:
     priority_config = watchlist.get("priority") or {}
-    priority_label = first_match(rules_from(priority_config), deal.category, deal.title, deal.hint)
+    priority_label = first_match(rules_from(priority_config), deal.title, deal.hint, deal.store)
     # A priority interest is always of interest, whatever the generic watchlist says.
     if priority_label is None and not _matches_watchlist(deal, watchlist):
         return None

@@ -706,3 +706,17 @@ def test_priority_offers_are_sent_first_within_a_run(monkeypatch):
 
     urls = _urls(rec)
     assert "prio" in urls[0] and "ordinary" in urls[1]
+
+
+def test_the_priority_quota_is_shared_between_the_interests_not_taken_by_the_biggest_web_discounts(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    offers = (
+        [_prio(f"sodimac:m{i}", pct=70.0 - i, confirmed=False, label="Ropa mujer", store=f"a{i}") for i in range(6)]
+        + [_prio("sodimac:tablet", pct=25.0, confirmed=False, label="Tablet", store="b")]
+        + [_prio("sodimac:colchon", pct=22.0, confirmed=False, label="Colchón 1 plaza", store="c")]
+    )
+
+    sent = send_offers(offers, bot_token="tok", chat_id="123", max_unverified=0, max_priority_unverified=3)
+
+    assert {o.priority for o in sent} == {"Ropa mujer", "Tablet", "Colchón 1 plaza"}   # one of each, not 3x ropa

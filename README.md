@@ -129,6 +129,10 @@ cuando falla.
 | `alerts.warn_from_pct` | Desde este % se agrega la advertencia "puede ser un error de precio" (80) |
 | `alerts.silent_below_pct` | Las ofertas del chat principal con menos descuento que esto llegan **sin sonido** (hoy `80`). `null` = todas suenan. Los mensajes del chat de alertas siempre suenan |
 | `alerts.alert_chat_min_pct` | Desde este % la oferta va al chat de alertas, si `TELEGRAM_ALERT_CHAT_ID` está definido (80) |
+| `priority.rules` | Intereses prioritarios (zapatillas mujer/hombre/bebé, Kerastase Blond, colchón 1 plaza, tablets, ropa, consolas, videojuegos, comida de gato NYD). Cada regla: `label`, `all` (grupos; debe cumplirse al menos una palabra de **cada** grupo), `none` (palabras que la descartan) y `not_stores`. Se compara con el **título** y el nombre del departamento de la tienda, nunca con la palabra de búsqueda. Una palabra con `=` delante solo coincide como palabra completa |
+| `priority.min_discount_pct` | Descuento anunciado mínimo para los prioritarios (20, en vez de 30) |
+| `priority.max_per_run`, `priority.daily_cap` | Cupo propio de prioritarios **no verificados**: 10 por run y 200 por día (aparte del cupo genérico de 5 y 60). Se reparten entre los intereses |
+| `scan.deep_slugs`, `scan.deep_pages` | Categorías de tienda que se leen más a fondo (10 páginas en vez de 4) por ser de interés prioritario |
 | `scan.max_search_pages` | Páginas por búsqueda en Falabella/Sodimac (3) |
 | `scan.max_category_pages` | Páginas por categoría (4; son 48 productos por página) |
 | `scan.max_categories` | Tope de categorías descubiertas por tienda (80) |
@@ -139,6 +143,26 @@ cuando falla.
 `config/watchlist.example.json` es la plantilla.
 
 ---
+
+### Intereses prioritarios
+
+Prioridad no es exclusividad: **todas las ofertas siguen llegando**. Un producto que coincide con un
+interés de `priority.rules`:
+
+1. **Se busca a propósito** (búsquedas y categorías de tienda dedicadas, leídas más a fondo).
+2. **Entra con menos descuento** (20 % anunciado en vez de 30 %).
+3. **Sale marcado** con `⭐ Prioridad: Zapatillas mujer` (o el interés que sea).
+4. **Se envía primero** dentro de cada run.
+5. **Tiene cupo propio** si no está verificado (10 por run, 200 por día), así que no compite con el cupo de
+   las no verificadas genéricas, y cada interés recibe su turno.
+6. **Suena** si además está verificado; si no, llega en silencio como las demás no verificadas.
+
+Para cambiar los intereses, edita `priority.rules` en `config/watchlist.json`. Para comprobar una regla
+sin esperar un escaneo:
+
+```
+python -c "import json; from priority import *; r=rules_from(json.load(open('config/watchlist.json'))['priority']); print(first_match(r, 'Zapatilla Mujer Nike Air', '', 'falabella'))"
+```
 
 ## 5. Telegram
 

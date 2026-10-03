@@ -500,9 +500,10 @@ def run() -> int:
             f"and there are no verified offers"
         )
     else:
+        priority_delivered = sum(1 for scored in delivered if scored.priority)
         telegram_line = (
-            f"delivered {len(delivered)}/{len(candidates)} individual messages "
-            f"({len(pending_keys)} pending retry next run)"
+            f"delivered {len(delivered)}/{len(candidates)} individual messages, "
+            f"{priority_delivered} of them priority ({len(pending_keys)} pending retry next run)"
         )
     print(f"Telegram: {telegram_line}", file=sys.stderr)
 

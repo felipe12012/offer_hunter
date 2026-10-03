@@ -201,10 +201,11 @@ def discover_categories(
 
 
 def _merge_hint(existing: Deal, other: Deal) -> Deal:
-    """The same product often turns up in several scans (a category and a keyword
-    search). The first one is kept, but what the others called it is remembered, so
-    priority matching sees every name the store gave it."""
-    extra = f"{other.category} {other.hint}".strip()
+    """The same product often turns up in several scans. The first one is kept, but the
+    store's own department names from the others are remembered, so priority matching
+    sees every department the store listed it in. (Search terms are not remembered:
+    a search returns loosely related products.)"""
+    extra = other.hint.strip()
     if extra and extra not in existing.hint:
         return replace(existing, hint=f"{existing.hint} {extra}".strip())
     return existing

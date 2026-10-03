@@ -310,7 +310,9 @@ def _dedupe_by_title(scored_deals: list[ScoredDeal]) -> list[ScoredDeal]:
     return list(best.values())
 
 
-def _round_robin_by_category(scored_deals: list[ScoredDeal], limit: int) -> list[ScoredDeal]:
+def _round_robin_by_category(
+    scored_deals: list[ScoredDeal], limit: int, group_key=None
+) -> list[ScoredDeal]:
     """Interleave categories so a single category can't fill the digest.
 
     Ranking by discount alone buried tablet and beauty deals under a flood of
@@ -319,7 +321,7 @@ def _round_robin_by_category(scored_deals: list[ScoredDeal], limit: int) -> list
     """
     by_category: dict[str, list[ScoredDeal]] = {}
     for scored in scored_deals:
-        by_category.setdefault(scored.deal.category, []).append(scored)
+        by_category.setdefault(group_key(scored) if group_key else scored.deal.category, []).append(scored)
     for items in by_category.values():
         items.sort(key=_order_key, reverse=True)
     order = sorted(by_category, key=lambda category: _order_key(by_category[category][0]), reverse=True)
@@ -390,7 +392,12 @@ def send_offers(
         MAX_PRIORITY_UNVERIFIED_PER_RUN if max_priority_unverified is None else max_priority_unverified
     )
     if priority_limit > 0:
-        ordered += _round_robin_by_category(_dedupe_by_title(priority_unverified), priority_limit)
+        # Hundreds of products can match a priority interest: take turns between the
+        # interests (women's shoes, tablets, mattresses...) instead of letting the
+        # biggest advertised discounts of one of them use the whole quota.
+        ordered += _round_robin_by_category(
+            _dedupe_by_title(priority_unverified), priority_limit, group_key=lambda scored: scored.priority
+        )
 
     # Selection is done. Priority interests go out first; the sort is stable, so the
     # category interleaving chosen above is kept for everything else (and inside the

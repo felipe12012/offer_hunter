@@ -9,8 +9,10 @@ CONFIG = json.loads((Path(__file__).parent.parent / "config" / "watchlist.json")
 RULES = rules_from(CONFIG.get("priority"))
 
 
-def label(title: str, category: str = "", hint: str = "") -> str | None:
-    return first_match(RULES, category, title, hint)
+def label(title: str, category: str = "", hint: str = "", store: str = "") -> str | None:
+    # `category` is accepted for readability of the cases below but is NOT part of the
+    # match: for most stores it is just the search term that happened to return the product.
+    return first_match(RULES, title, hint, store)
 
 
 # ---- normalisation and token matching ----------------------------------------------
@@ -20,8 +22,8 @@ def test_normalize_drops_accents_case_and_punctuation():
 
 
 def test_no_rules_means_nothing_is_priority():
-    assert first_match(rules_from(None), "c", "Zapatilla Mujer", "") is None
-    assert first_match(rules_from({}), "c", "Zapatilla Mujer", "") is None
+    assert first_match(rules_from(None), "Zapatilla Mujer") is None
+    assert first_match(rules_from({}), "Zapatilla Mujer") is None
 
 
 def test_rules_from_is_cached_per_config():
@@ -31,22 +33,22 @@ def test_rules_from_is_cached_per_config():
 
 def test_short_tokens_match_whole_words_only():
     rules = rules_from({"rules": [{"label": "tops", "all": [["top"]]}]})
-    assert first_match(rules, "", "Top deportivo", "") == "tops"
-    assert first_match(rules, "", "Laptop gamer", "") is None
+    assert first_match(rules, "Top deportivo") == "tops"
+    assert first_match(rules, "Laptop gamer") is None
 
 
 def test_equals_prefix_forces_a_whole_word_match_on_longer_tokens():
     rules = rules_from({"rules": [{"label": "r", "all": [["x"]], "none": ["=aros"]}]})
-    assert first_match(rules, "", "x claros", "") == "r"          # 'aros' inside 'claros' is not the word
-    assert first_match(rules, "", "x aros de plata", "") is None
+    assert first_match(rules, "x claros") == "r"          # 'aros' inside 'claros' is not the word
+    assert first_match(rules, "x aros de plata") is None
 
 
 def test_every_group_must_match_and_none_vetoes():
     rules = rules_from({"rules": [{"label": "r", "all": [["a"], ["b", "c"]], "none": ["z"]}]})
-    assert first_match(rules, "", "a b", "") == "r"
-    assert first_match(rules, "", "a c", "") == "r"
-    assert first_match(rules, "", "a", "") is None
-    assert first_match(rules, "", "a b z", "") is None
+    assert first_match(rules, "a b") == "r"
+    assert first_match(rules, "a c") == "r"
+    assert first_match(rules, "a") is None
+    assert first_match(rules, "a b z") is None
 
 
 def test_the_search_term_and_the_category_hint_count_as_text():
@@ -100,6 +102,19 @@ def test_priority_titles_are_recognised(title, category, hint, expected):
         ("Control Inalámbrico DualSense", "tecnologia", "Consolas"),                   # accessory
         ("Cartera Mujer Cuero", "ropa", "Moda Mujer"),                                 # accessory
         ("Perfume Mujer Floral 100ml", "belleza", ""),
+        # real false positives seen when the search term was part of the text:
+        ("Mocasin Mujer Inees Negro Hush Puppies", "zapatillas mujer", ""),
+        ("Calcetin Algodón Hombre Cocktail Café Hush Puppies", "zapatillas hombre", ""),
+        ("Alimento Para Gato Adulto Trigono 10kg", "comida gato nyd", ""),
+        ("Churu Gato Sabor Atún 24 Unidades", "comida gato nyd", ""),
+        ("Serum Blonde Life 150 ML Joico", "kerastase blond", ""),
+        ("Sosten Copa Minimizer Blonda Flores", "kerastase blond", ""),
+        ("Cama Europea 1 Plaza Luna 90x190 Cm Base Colchón Madera Rosa", "colchon 1 plaza", ""),
+        ("Zueco Bebés Recién Nacidos Azul Crocs", "zapatillas bebe", ""),
+        ("EXIT Clóset Verona 4 Puertas Ripado Correderas Metalicas 200x120x47", "tablet", ""),     # 'ipad' inside 'ripado'
+        ("GAMESIR Control X5 Lite para iPhone 15 16, Android y iPad Mini. Sticks de Efecto", "tablet", ""),
+        ("Consola Power Mixer Ct-4 Ch Mavi", "consola", ""),                                          # audio console
+        ("Consola Podcast Multipista Portátil N-live Nai-33l Nux", "consola", ""),
         ("N&D Prime Perro Adulto Cordero 7Kg", "mascotas", ""),                        # dog food
         ("Taladro Percutor 650W", "herramientas", ""),
         ("Notebook HP 15 Ryzen 7", "tecnologia", ""),
@@ -119,3 +134,19 @@ def test_a_console_is_labelled_console_not_video_game():
 
 def test_a_mens_shoe_is_not_labelled_as_womens():
     assert label("Zapatilla Hombre Nike", "zapatillas", "") == "Zapatillas hombre"
+
+
+def test_the_search_term_alone_never_makes_a_product_priority():
+    # Stores return loosely related results for any query; only the product's own title
+    # (and the store's real department name) may say what it is.
+    assert label("Calcetin Mujer Algodón", category="zapatillas mujer") is None
+    assert label("Alimento Para Gato Adulto Ekos 16kg", category="comida gato nyd") is None
+
+
+def test_kerastase_blond_line_is_recognised_by_its_rubio_decolorado_wording():
+    assert label("KERASTASE Acondicionador Reparación Profunda Cabello Rubio O Decolorado Cicaflash") == "Kerastase Blond"
+
+
+def test_pharmacy_tablets_are_not_tablet_computers():
+    assert label("Vitamina C 500 mg 60 tablets", store="ahumada") is None
+    assert label("Tablet Samsung Galaxy Tab A9", store="hites") == "Tablet"
