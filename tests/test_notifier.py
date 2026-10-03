@@ -511,3 +511,62 @@ def test_alert_chat_messages_always_ring_even_when_small_offers_are_silent(monke
     chats = _by_chat(rec)
     assert "disable_notification" not in chats["ALERT"][0][1]
     assert chats["MAIN"][0][1]["disable_notification"] is True
+
+
+# ---- unverified offers (verify_advertised_discount: "label") ---------------
+
+def _unverified(deal_id, web_pct, store="sodimac"):
+    scored = make_scored(deal_id, store=store, discount_pct=web_pct, real_discount_pct=0.0)
+    return ScoredDeal(deal=scored.deal, real_discount_pct=0.0, reasons=["-x% anunciado por la tienda (sin historial para verificar)"],
+                      verified_pct=0.0, advertised_confirmed=False)
+
+
+def _verified(deal_id, pct, store="sodimac"):
+    scored = make_scored(deal_id, store=store, discount_pct=pct, real_discount_pct=pct)
+    return ScoredDeal(deal=scored.deal, real_discount_pct=pct, reasons=["-x% vs minimo historico"],
+                      verified_pct=pct, advertised_confirmed=True)
+
+
+def _urls(rec):
+    return [c[1]["reply_markup"]["inline_keyboard"][0][0]["url"] for c in rec.calls]
+
+
+def test_verified_offers_are_sent_before_unverified_ones_even_with_a_bigger_web_percentage(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    offers = [_unverified("sodimac:web90", 90.0), _verified("sodimac:real35", 35.0)]
+
+    send_offers(offers, bot_token="tok", chat_id="123")
+
+    urls = _urls(rec)
+    assert "real35" in urls[0] and "web90" in urls[1]
+
+
+def test_unverified_offers_are_ordered_by_the_web_percentage_among_themselves(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    offers = [_unverified("sodimac:low", 35.0), _unverified("sodimac:high", 70.0, store="falabella")]
+
+    send_offers(offers, bot_token="tok", chat_id="123")
+
+    urls = _urls(rec)
+    assert "high" in urls[0] and "low" in urls[1]
+
+
+def test_unverified_offers_never_use_the_alert_chat_or_a_loud_tier(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    offer = _unverified("sodimac:web90", 90.0)
+
+    send_offers([offer], bot_token="tok", chat_id="MAIN", alert_chat_id="ALERT")
+
+    assert {str(c[1]["chat_id"]) for c in rec.calls} == {"MAIN"}
+    assert "SUPER OFERTA" not in rec.calls[0][1]["caption"]
+    assert "no verificado" in rec.calls[0][1]["caption"]
+
+
+def test_unverified_offers_arrive_silently_when_silent_mode_is_on(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    send_offers([_unverified("sodimac:web90", 90.0)], bot_token="tok", chat_id="MAIN", alerts={"silent_below_pct": 80})
+    assert rec.calls[0][1]["disable_notification"] is True

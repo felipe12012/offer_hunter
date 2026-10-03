@@ -52,8 +52,16 @@ def evaluate(deal: Deal, watchlist: dict, history: dict) -> ScoredDeal | None:
     qualifies = False
     advertised_confirmed = False
 
+    # verify_advertised_discount: true  -> only discounts that history confirms
+    #                             "label" -> also let unconfirmed ones through, flagged
+    #                             false -> trust the store's percentage
+    verify = watchlist.get("verify_advertised_discount", True)
     if deal.discount_pct >= min_discount_pct:
-        if watchlist.get("verify_advertised_discount", True):
+        if verify is False:
+            qualifies = True
+            advertised_confirmed = True  # the user opted out of verification
+            reasons.append(f"-{deal.discount_pct:.0f}% vs precio normal")
+        else:
             confirmed = _confirmed_list_price(deal, history)
             if confirmed is not None:
                 qualifies = True
@@ -62,10 +70,11 @@ def evaluate(deal: Deal, watchlist: dict, history: dict) -> ScoredDeal | None:
                     f"-{deal.discount_pct:.0f}% vs precio normal "
                     f"(confirmado: se vendio a {_format_clp(confirmed)})"
                 )
-        else:
-            qualifies = True
-            advertised_confirmed = True  # the user opted out of verification
-            reasons.append(f"-{deal.discount_pct:.0f}% vs precio normal")
+            elif verify == "label":
+                qualifies = True
+                reasons.append(
+                    f"-{deal.discount_pct:.0f}% anunciado por la tienda (sin historial para verificarlo)"
+                )
 
     real_discount_pct = 0.0
     historical_min = _historical_min(deal, history)

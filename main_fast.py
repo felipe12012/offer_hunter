@@ -230,7 +230,8 @@ def run() -> int:
 
     print(f"Deals per store: {_store_summary(deals, watchlist.get("disabled_stores"))}", file=sys.stderr)
     print(
-        f"Scanned {len(deals)} deals, {len(new_keys)} new, {len(candidates)} qualifying, "
+        f"Scanned {len(deals)} deals, {len(new_keys)} new, {len(candidates)} qualifying "
+        f"({sum(1 for c in candidates if not c.advertised_confirmed)} unverified), "
         f"{unverified} advertised discounts discarded as unverified",
         file=sys.stderr,
     )

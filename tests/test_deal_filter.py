@@ -117,3 +117,39 @@ def test_confirmed_advertised_discount_is_trusted_as_the_verified_percentage():
     result = evaluate(deal, WATCHLIST, history)
     assert result.advertised_confirmed is True
     assert result.verified_pct == max(result.real_discount_pct, deal.discount_pct)
+
+
+LABEL = {**WATCHLIST, "verify_advertised_discount": "label"}
+
+
+def test_label_mode_lets_an_unconfirmed_discount_through_but_marks_it_unverified():
+    deal = make_deal(6990, 9990)                      # -30%, nothing in history
+    result = evaluate(deal, LABEL, {})
+    assert result is not None
+    assert result.advertised_confirmed is False
+    assert result.verified_pct == 0.0                 # nothing we can stand behind yet
+    assert any("sin historial" in reason for reason in result.reasons)
+
+
+def test_label_mode_still_trusts_a_discount_that_history_confirms():
+    deal = make_deal(6990, 9990)
+    history = {"sodimac:123": [{"date": "2026-09-01", "price": 9990}]}
+    result = evaluate(deal, LABEL, history)
+    assert result.advertised_confirmed is True
+    assert result.verified_pct >= 30.0
+
+
+def test_label_mode_uses_the_history_drop_as_the_verified_percentage_of_an_unconfirmed_claim():
+    deal = make_deal(11000, 50000)                    # web: -78%, but history only ever saw 20.000
+    history = {"sodimac:123": [{"date": "2026-09-20", "price": 20000}]}
+    result = evaluate(deal, LABEL, history)
+    assert result.advertised_confirmed is False
+    assert result.verified_pct == 45.0
+
+
+def test_label_mode_still_rejects_small_discounts():
+    assert evaluate(make_deal(9000, 9990), LABEL, {}) is None
+
+
+def test_strict_mode_is_unchanged_and_still_rejects_unconfirmed_discounts():
+    assert evaluate(make_deal(6990, 9990), WATCHLIST, {}) is None

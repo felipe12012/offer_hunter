@@ -63,8 +63,9 @@ Consecuencias que conviene saber:
 
 - El historial se construye con los propios escaneos, así que **un producto visto por primera vez
   ya rebajado no se puede confirmar**. Las ofertas aparecen cuando un producto cambia de precio.
-- Si solo quieres filtrar por porcentaje (con riesgo de precios inflados), pon
-  `"verify_advertised_discount": false` en la watchlist.
+- Modo configurable en `verify_advertised_discount`: `true` (solo verificados), `"label"` (también los
+  sin historial, etiquetados *"no verificado"*, enviados en silencio y siempre después de los
+  verificados) o `false` (confiar en el porcentaje de la web, con riesgo de precios inflados).
 - **El porcentaje que se anuncia en Telegram (y con el que se ordenan y clasifican las alertas) es
   el verificado**: la baja contra nuestro historial, o el descuento de la web solo si el historial
   confirma su "precio normal". Si la web anuncia más (p. ej. -78 %) pero no se puede comprobar, el
@@ -119,7 +120,7 @@ cuando falla.
 | `keywords` | Palabras de interés. Se buscan igual **y** se usan como búsquedas en cada tienda |
 | `min_discount_pct` | Descuento anunciado mínimo (por defecto 30) |
 | `min_real_discount_pct` | Baja mínima contra el mínimo histórico (por defecto 15) |
-| `verify_advertised_discount` | `false` desactiva la confirmación por historial (por defecto `true`) |
+| `verify_advertised_discount` | `true` (por defecto): solo pasan descuentos que el historial confirma. **`"label"`** (hoy): también pasan los que no tienen historial, pero se envían etiquetados *"no verificado"*, en silencio, después de los verificados y sin alertas fuertes ni canal. `false`: se confía en el % de la web |
 | `disabled_stores` | Tiendas que se omiten, p. ej. `["paris","ripley","tottus"]` |
 | `alerts.tiers` | Niveles de alerta: `[{"min_pct": 90, "label": "🚨🚨🚨 SUPER OFERTA"}, …]`. El mensaje abre con la etiqueta y el % (el mayor entre el descuento anunciado y el histórico) |
 | `alerts.warn_from_pct` | Desde este % se agrega la advertencia "puede ser un error de precio" (80) |

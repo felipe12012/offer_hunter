@@ -54,6 +54,12 @@ def _rank_key(scored: ScoredDeal) -> float:
     return max(scored.real_discount_pct, scored.deal.discount_pct)
 
 
+def _order_key(scored: ScoredDeal) -> tuple[float, float]:
+    """Sort key: verified discount first, the store's own percentage only as a
+    tie-break (so unverified offers rank below every verified one)."""
+    return (_rank_key(scored), scored.deal.discount_pct)
+
+
 def _format_clp(amount: int) -> str:
     return f"${amount:,}".replace(",", ".")
 
@@ -234,7 +240,7 @@ def _dedupe_by_title(scored_deals: list[ScoredDeal]) -> list[ScoredDeal]:
     for scored in scored_deals:
         key = (scored.deal.store, _normalize_title(scored.deal.title))
         current = best.get(key)
-        if current is None or _rank_key(scored) > _rank_key(current):
+        if current is None or _order_key(scored) > _order_key(current):
             best[key] = scored
     return list(best.values())
 
@@ -250,8 +256,8 @@ def _round_robin_by_category(scored_deals: list[ScoredDeal], limit: int) -> list
     for scored in scored_deals:
         by_category.setdefault(scored.deal.category, []).append(scored)
     for items in by_category.values():
-        items.sort(key=_rank_key, reverse=True)
-    order = sorted(by_category, key=lambda category: _rank_key(by_category[category][0]), reverse=True)
+        items.sort(key=_order_key, reverse=True)
+    order = sorted(by_category, key=lambda category: _order_key(by_category[category][0]), reverse=True)
 
     picked: list[ScoredDeal] = []
     index = 0
