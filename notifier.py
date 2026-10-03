@@ -15,6 +15,10 @@ SEND_DELAY_SECONDS = 1.1
 # Ceiling per run so a huge sale can't flood the chat. Offers beyond it are not
 # reported as sent, so the caller leaves them unseen and they go out next run.
 MAX_MESSAGES_PER_RUN = 25
+# Advertised discounts we could NOT confirm against price history are capped per
+# run, separately from the verified quota. They are the 99% of qualifying offers
+# and the ones most likely to be inflated "always 60% off" prices.
+MAX_UNVERIFIED_PER_RUN = 5
 MAX_CAPTION_LENGTH = 1024
 MAX_TITLE_LENGTH = 180
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
@@ -283,12 +287,17 @@ def send_offers(
     alerts: dict | None = None,
     alert_chat_id: str | None = None,
     alert_thread_id: str | int | None = None,
+    max_unverified: int | None = None,
 ) -> list[ScoredDeal]:
     """Send each offer as its own Telegram message (photo + caption + link button).
 
     Offers at or above ``alerts["alert_chat_min_pct"]`` go to the alert chat when
     one is configured (argument or TELEGRAM_ALERT_CHAT_ID); everything else, and
     any alert-chat failure, goes to the main chat.
+
+    Verified offers get the full ``MAX_MESSAGES_PER_RUN`` quota; unconfirmed
+    advertised discounts are limited to ``max_unverified`` (default
+    ``MAX_UNVERIFIED_PER_RUN``, and the caller can shrink it for a daily cap).
 
     Returns the offers that were actually delivered, in send order, so the
     caller can mark only those as seen and retry the rest on the next run."""
@@ -304,7 +313,14 @@ def send_offers(
     thread_id = int(raw_thread) if raw_thread else None
     alert_min = _alerts(alerts)["alert_chat_min_pct"]
 
-    ordered = _round_robin_by_category(_dedupe_by_title(scored_deals), MAX_MESSAGES_PER_RUN)
+    verified = [scored for scored in scored_deals if scored.advertised_confirmed]
+    unverified = [scored for scored in scored_deals if not scored.advertised_confirmed]
+
+    ordered = _round_robin_by_category(_dedupe_by_title(verified), MAX_MESSAGES_PER_RUN)
+    room = MAX_MESSAGES_PER_RUN - len(ordered)
+    limit = MAX_UNVERIFIED_PER_RUN if max_unverified is None else max_unverified
+    if room > 0 and limit > 0:
+        ordered += _round_robin_by_category(_dedupe_by_title(unverified), min(limit, room))
 
     delivered: list[ScoredDeal] = []
     for index, scored in enumerate(ordered):

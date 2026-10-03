@@ -29,6 +29,9 @@ jobs:
   run-pipeline:
     runs-on: ubuntu-latest
     environment: env
+    # Hard ceiling. A single hung scraper must not hold the concurrency lock for
+    # hours; main_fast also caps each store individually, this is the backstop.
+    timeout-minutes: 20
     steps:
       # Check out the branch tip, not the commit that existed when the run was
       # triggered. A run queued behind another (see `concurrency`) would
@@ -87,7 +90,7 @@ jobs:
         run: |
           git config user.name "cyberday-hunter"
           git config user.email "actions@users.noreply.github.com"
-          git add data/seen_items.json data/price_history.json
+          git add data/seen_items.json data/price_history.json data/alert_budget.json
           git diff --cached --quiet || git commit -m "chore: update seen items and price history"
           # Rebase onto whatever landed while this run was scanning (another
           # run, or a manual push). Without this the push is rejected and the

@@ -1,7 +1,7 @@
 import requests as real_requests
 
 from models import Deal, ScoredDeal
-from notifier import MAX_MESSAGES_PER_RUN, format_offer, send_offers
+from notifier import MAX_MESSAGES_PER_RUN, MAX_UNVERIFIED_PER_RUN, format_offer, send_offers
 
 
 def make_scored(
@@ -13,6 +13,7 @@ def make_scored(
     image_url: str = "https://img.example/p.jpg",
     title: str | None = None,
     category: str = "herramientas",
+    advertised_confirmed: bool = True,
 ) -> ScoredDeal:
     deal = Deal(
         id=deal_id,
@@ -26,7 +27,12 @@ def make_scored(
         scraped_at="2026-10-01T12:00:00+00:00",
         image_url=image_url,
     )
-    return ScoredDeal(deal=deal, real_discount_pct=real_discount_pct, reasons=["-20% vs minimo historico ($39.990)"])
+    return ScoredDeal(
+        deal=deal,
+        real_discount_pct=real_discount_pct,
+        reasons=["-20% vs minimo historico ($39.990)"],
+        advertised_confirmed=advertised_confirmed,
+    )
 
 
 class FakeResponse:
@@ -570,3 +576,34 @@ def test_unverified_offers_arrive_silently_when_silent_mode_is_on(monkeypatch):
     install(monkeypatch, rec)
     send_offers([_unverified("sodimac:web90", 90.0)], bot_token="tok", chat_id="MAIN", alerts={"silent_below_pct": 80})
     assert rec.calls[0][1]["disable_notification"] is True
+
+
+def test_unverified_offers_are_capped_per_run(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    offers = [_unverified(f"store{i}:u", 50.0 + i, store=f"store{i}") for i in range(20)]
+
+    send_offers(offers, bot_token="tok", chat_id="123")
+
+    assert len(rec.calls) == MAX_UNVERIFIED_PER_RUN
+
+
+def test_verified_offers_are_not_limited_by_the_unverified_cap(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    offers = [_verified(f"store{i}:v", 40.0, store=f"store{i}") for i in range(10)]
+    offers.append(_unverified("x:u", 50.0))
+
+    send_offers(offers, bot_token="tok", chat_id="123")
+
+    assert len(rec.calls) == 11  # 10 verified + the single unverified
+
+
+def test_the_daily_budget_can_shrink_the_unverified_quota(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    offers = [_unverified(f"store{i}:u", 50.0, store=f"store{i}") for i in range(10)]
+
+    send_offers(offers, bot_token="tok", chat_id="123", max_unverified=2)
+
+    assert len(rec.calls) == 2

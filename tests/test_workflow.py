@@ -1,5 +1,6 @@
 # tests/test_workflow.py
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import main_fast
@@ -40,6 +41,7 @@ def _patch_paths(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(main_fast, "WATCHLIST_PATH", watchlist_path)
     monkeypatch.setattr(main_fast, "SEEN_PATH", tmp_path / "seen_items.json")
     monkeypatch.setattr(main_fast, "HISTORY_PATH", tmp_path / "price_history.json")
+    monkeypatch.setattr(main_fast, "BUDGET_PATH", tmp_path / "alert_budget.json")
 
 
 def _stub_all_sources(monkeypatch, **overrides):
@@ -306,6 +308,34 @@ def test_run_without_supabase_configuration_just_skips_the_mirror(monkeypatch, t
     monkeypatch.delenv("SUPABASE_URL", raising=False)
     monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
     assert main_fast.run() == 0
+
+
+def test_budget_resets_daily_and_carries_over_within_the_day(tmp_path):
+    path = tmp_path / "alert_budget.json"
+    path.write_text(json.dumps({"date": "2026-01-01", "unverified": 10}), encoding="utf-8")
+
+    assert main_fast.load_budget(path, "2026-01-01")["unverified"] == 10   # same day: carried over
+    assert main_fast.load_budget(path, "2026-01-02")["unverified"] == 0    # new day: reset
+    assert main_fast.load_budget(tmp_path / "missing.json", "2026-01-02") == {
+        "date": "2026-01-02",
+        "unverified": 0,
+    }
+
+
+def test_run_passes_the_remaining_daily_unverified_budget_to_the_notifier(monkeypatch, tmp_path):
+    _patch_paths(monkeypatch, tmp_path)
+    _history_with_drop(tmp_path)
+    today = datetime.now(timezone.utc).date().isoformat()
+    (tmp_path / "alert_budget.json").write_text(
+        json.dumps({"date": today, "unverified": main_fast.DAILY_UNVERIFIED_CAP - 3}), encoding="utf-8"
+    )
+    _stub_all_sources(monkeypatch, fetch_sodimac_deals=lambda watchlist: [make_deal("sodimac:1", 5000)])
+    captured = {}
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: captured.update(kw) or list(scored))
+
+    assert main_fast.run() == 0
+
+    assert captured["max_unverified"] == 3
 
 
 def test_mirror_is_skipped_when_telegram_delivery_fails_entirely(monkeypatch, tmp_path):

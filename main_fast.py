@@ -4,7 +4,8 @@ import os
 import sys
 import time
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -113,7 +114,28 @@ def watchlist_for(store: str, watchlist: dict) -> dict:
 
 SEEN_PATH = Path(__file__).parent / "data" / "seen_items.json"
 HISTORY_PATH = Path(__file__).parent / "data" / "price_history.json"
+BUDGET_PATH = Path(__file__).parent / "data" / "alert_budget.json"
 WATCHLIST_PATH = Path(__file__).parent / "config" / "watchlist.json"
+# A whole scan finishes in ~6 minutes; give any single store generous room but
+# stop waiting forever, so one hung store cannot stall the run or the lock.
+SOURCE_TIMEOUT_SECONDS = 420
+# Ceiling on unconfirmed advertised discounts sent per day (across all runs), on
+# top of the per-run cap in notifier. Resets at UTC midnight.
+DAILY_UNVERIFIED_CAP = 60
+
+
+def load_budget(path: Path, today: str) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = {}
+    if not isinstance(data, dict) or data.get("date") != today:
+        return {"date": today, "unverified": 0}
+    return data
+
+
+def save_budget(path: Path, budget: dict) -> None:
+    path.write_text(json.dumps(budget), encoding="utf-8")
 
 load_dotenv(Path(__file__).parent / ".env")
 
@@ -142,17 +164,29 @@ def fetch_all_deals(watchlist: dict) -> list[Deal]:
         except Exception as exc:
             return name, [], exc
 
-    # Stores are independent and network-bound: scan them at the same time.
-    with ThreadPoolExecutor(max_workers=len(source_fetchers)) as pool:
-        outcomes = list(pool.map(run_source, source_fetchers))
+    # Stores are independent and network-bound: scan them at the same time, but
+    # never wait forever. A store that overruns is treated as a failure and the
+    # rest of the run proceeds with whatever finished.
+    executor = ThreadPoolExecutor(max_workers=len(source_fetchers))
+    futures = {executor.submit(run_source, source): source[0] for source in source_fetchers}
+    done, pending = wait(futures, timeout=SOURCE_TIMEOUT_SECONDS)
 
     deals: list[Deal] = []
     failures = 0
-    for name, found, error in outcomes:
+    for future in done:
+        name, found, error = future.result()
         if error is not None:
             failures += 1
             print(f"{name} scraper failed: {error}", file=sys.stderr)
         deals.extend(found)
+    for future in pending:
+        failures += 1
+        future.cancel()
+        print(
+            f"{futures[future]} scraper timed out after {SOURCE_TIMEOUT_SECONDS}s",
+            file=sys.stderr,
+        )
+    executor.shutdown(wait=False, cancel_futures=True)
 
     if failures == len(source_fetchers):
         raise RuntimeError("All fast-tier sources failed to fetch deals")
@@ -256,7 +290,14 @@ def run() -> int:
             candidates.append(scored)
 
     candidates, aliases = dedupe_cross_store(candidates)
-    delivered = send_offers(candidates, alerts=watchlist.get("alerts")) if candidates else []
+    today = datetime.now(timezone.utc).date().isoformat()
+    budget = load_budget(BUDGET_PATH, today)
+    unverified_room = max(0, DAILY_UNVERIFIED_CAP - budget.get("unverified", 0))
+    delivered = (
+        send_offers(candidates, alerts=watchlist.get("alerts"), max_unverified=unverified_room)
+        if candidates
+        else []
+    )
     delivered_keys: set[str] = set()
     for scored in delivered:
         key = deal_key(scored.deal)
@@ -287,6 +328,10 @@ def run() -> int:
     # next run retries them.
     mark_seen(SEEN_PATH, seen_keys, sorted(delivered_keys))
     save_price_history(HISTORY_PATH, history)
+    budget["unverified"] = budget.get("unverified", 0) + sum(
+        1 for scored in delivered if not scored.advertised_confirmed
+    )
+    save_budget(BUDGET_PATH, budget)
     mirror_to_supabase(deals, delivered, len(candidates), len(new_keys), unverified, started)
     return 0
 
