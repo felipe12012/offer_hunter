@@ -248,9 +248,11 @@ def test_selftest_includes_one_simulated_big_alert_and_touches_no_state(monkeypa
 
 
 class FakeMirror:
-    def __init__(self, fail=False):
+    def __init__(self, fail=False, fail_refresh=False):
         self.fail = fail
+        self.fail_refresh = fail_refresh
         self.scans, self.sent, self.runs = [], [], []
+        self.refreshed = 0
 
     def sync_scan(self, deals):
         if self.fail:
@@ -263,6 +265,11 @@ class FakeMirror:
 
     def record_run(self, stats):
         self.runs.append(stats)
+
+    def refresh_feed(self):
+        if self.fail_refresh:
+            raise RuntimeError("refresh failed")
+        self.refreshed += 1
 
 
 def _history_with_drop(tmp_path):
@@ -392,3 +399,30 @@ def test_telegram_failing_on_sendable_unverified_offers_is_still_a_failure(monke
     monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: [])   # ...and it all fails
 
     assert main_fast.run() == 1
+
+
+def test_run_refreshes_the_public_feed_after_syncing(monkeypatch, tmp_path):
+    _patch_paths(monkeypatch, tmp_path)
+    _history_with_drop(tmp_path)
+    _stub_all_sources(monkeypatch, fetch_sodimac_deals=lambda watchlist: [make_deal("sodimac:1", 5000)])
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: scored)
+    mirror = FakeMirror()
+    monkeypatch.setattr(main_fast.SupabaseSync, "from_env", classmethod(lambda cls: mirror))
+
+    assert main_fast.run() == 0
+
+    assert mirror.refreshed == 1
+
+
+def test_a_feed_refresh_failure_does_not_fail_the_run(monkeypatch, tmp_path):
+    _patch_paths(monkeypatch, tmp_path)
+    _history_with_drop(tmp_path)
+    _stub_all_sources(monkeypatch, fetch_sodimac_deals=lambda watchlist: [make_deal("sodimac:1", 5000)])
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: scored)
+    mirror = FakeMirror(fail_refresh=True)
+    monkeypatch.setattr(main_fast.SupabaseSync, "from_env", classmethod(lambda cls: mirror))
+
+    assert main_fast.run() == 0
+
+    seen = json.loads((tmp_path / "seen_items.json").read_text(encoding="utf-8"))
+    assert seen == ["sodimac:1:5000"]   # JSON state is unaffected by the refresh failure

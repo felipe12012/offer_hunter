@@ -259,3 +259,12 @@ def test_recent_store_status_raises_a_supabase_error_on_http_errors(monkeypatch)
     monkeypatch.setattr("supabase_sync.requests.get", lambda *a, **k: FakeResponse(400, text="column does not exist"))
     with pytest.raises(SupabaseError):
         SupabaseSync(URL, "k").recent_store_status(2)
+
+
+def test_refresh_feed_calls_the_rpc_with_an_empty_body(monkeypatch):
+    rec = Recorder()
+
+    client(monkeypatch, rec).refresh_feed()
+
+    assert rec.calls[0]["url"] == f"{URL}/rest/v1/rpc/offer_refresh_feed"
+    assert rec.calls[0]["body"] == {}

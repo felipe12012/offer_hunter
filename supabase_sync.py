@@ -140,6 +140,11 @@ class SupabaseSync:
     def record_run(self, stats: dict) -> None:
         self._post("offer_scan_runs", [stats], prefer="return=minimal")
 
+    def refresh_feed(self) -> None:
+        """Rebuild the public feed materialized view (offer_feed) after a scan, so
+        the web sees this run's data. Server-side function, service_role only."""
+        self._post("rpc/offer_refresh_feed", {})
+
     # -- one-time import of the JSON files ------------------------------------
 
     def import_history(self, history: dict) -> dict:

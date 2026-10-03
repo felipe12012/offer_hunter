@@ -391,6 +391,9 @@ def mirror_to_supabase(
                 "quota": quota,
             }
         )
+        # Rebuild the public feed so the web reflects this run. A refresh failure
+        # is caught below like any other sync error and never aborts the scan.
+        mirror.refresh_feed()
         line = (
             f"Supabase: {totals['received']} products received, {totals['new']} new, "
             f"{totals['points']} new price points, {len(delivered)} offers recorded"
