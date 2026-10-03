@@ -334,3 +334,54 @@ def test_alerts_are_skipped_quietly_when_the_history_cannot_be_read(monkeypatch,
 
     assert main_fast.run() == 0
     assert alerts == [] and len(mirror.runs) == 1     # the run itself is still recorded
+
+
+# ---- "no offers" is never an error --------------------------------------------------
+
+def test_a_scan_where_every_store_returns_nothing_is_not_an_error(monkeypatch, tmp_path):
+    summary = patch_paths(monkeypatch, tmp_path)
+    stub_sources(monkeypatch)                                   # all 22 stores answer with zero products
+    sent = []
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: sent.append(scored) or scored)
+
+    assert main_fast.run() == 0
+
+    assert sent == []                                           # nothing to send, nothing attempted
+    assert not (tmp_path / "run_status.txt").exists()           # no failure reason left behind
+    assert "Escaneo completado" in summary.read_text(encoding="utf-8")
+
+
+def test_products_that_do_not_qualify_are_not_an_error(monkeypatch, tmp_path):
+    patch_paths(monkeypatch, tmp_path)
+    stub_sources(monkeypatch, fetch_sodimac_deals=lambda watchlist: [make_deal("sodimac:1", 5000)])  # no discount
+    sent = []
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: sent.append(scored) or scored)
+
+    assert main_fast.run() == 0
+    assert sent == []
+
+
+def test_offers_that_were_all_delivered_before_are_not_an_error(monkeypatch, tmp_path):
+    patch_paths(monkeypatch, tmp_path)
+    (tmp_path / "price_history.json").write_text(
+        json.dumps({"sodimac:1": [{"date": "2026-09-20", "price": 9990}]}), encoding="utf-8"
+    )
+    (tmp_path / "seen_items.json").write_text(json.dumps(["sodimac:1:5000"]), encoding="utf-8")
+    stub_sources(monkeypatch, fetch_sodimac_deals=lambda watchlist: [make_deal("sodimac:1", 5000)])
+    sent = []
+    monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: sent.append(scored) or scored)
+
+    assert main_fast.run() == 0
+    assert sent == []                                           # already seen, so not even a candidate
+
+
+def test_a_run_with_no_offers_still_saves_history_and_mirrors_to_supabase(monkeypatch, tmp_path):
+    patch_paths(monkeypatch, tmp_path)
+    stub_sources(monkeypatch, fetch_sodimac_deals=lambda watchlist: [make_deal("sodimac:1", 5000)])
+    mirror = FakeMirror()
+    use_mirror(monkeypatch, mirror)
+
+    assert main_fast.run() == 0
+
+    assert (tmp_path / "price_history.json").exists()
+    assert len(mirror.scans) == 1 and len(mirror.runs) == 1
