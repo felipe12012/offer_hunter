@@ -11,7 +11,7 @@ Meta: una web pública, rápida y atractiva que lista las ofertas que ya recolec
 
 ## 0. Cómo ejecutar este plan
 
-1. Lee, en este orden: `README.md`, `docs/adding-a-store.md`, este archivo,
+1. Lee, en este orden: `README.md`, `docs/adding-a-store.md`, este archivo, (en especial la **sección 5B**, Supabase),
    `supabase/migrations/0001_offer_hunter.sql` y `0002_offer_feed.sql`.
 2. Trabaja por fases (sección 7). Cada fase tiene una **definición de terminado**; no pases a la
    siguiente sin cumplirla.
@@ -220,6 +220,9 @@ web/
 
 Hay que crear `.env.example` con esos nombres y **no** `.env.local` en el repo (comprobar `.gitignore`).
 
+> La referencia completa de la conexión (cabeceras, objetos, peticiones, límites, errores y prueba de
+> conexión) está en la **sección 5B**.
+
 ### 5.3 Capa de datos (`lib/data.ts`)
 
 Usa `fetch` directo a PostgREST (permite `next: { revalidate: 120 }`) o `unstable_cache`. Todas las
@@ -351,6 +354,263 @@ No somos las tiendas ni vendemos productos."
 
 ---
 
+## 5B. Conexión con Supabase (referencia completa)
+
+Todo lo que la web necesita para hablar con la base de datos, en un solo lugar. Las cifras y
+nombres de esta sección se **verificaron contra el proyecto real el 2026-10-03**; lo que no se
+pudo verificar está marcado como *por verificar*.
+
+### 5B.1 Cómo se conecta (y cómo no)
+
+```
+Navegador ──(HTML ya renderizado)──▶ Vercel (Next.js, servidor) ──HTTPS, clave secreta──▶ Supabase Data API (PostgREST)
+```
+
+- **El navegador nunca habla con Supabase.** Solo el servidor de Next.js (Server Components y
+  route handlers) lo hace. No hay claves ni URL de la base en el código del cliente.
+- **Se usa la Data API REST** (`{SUPABASE_URL}/rest/v1/...`), no una conexión directa a Postgres.
+  Motivos: es lo que ya usa el pipeline, no hace falta la contraseña de la base (se muestra una sola
+  vez al crear el proyecto y no la tenemos), funciona igual de bien en funciones serverless de Vercel
+  sin gestionar conexiones, y los permisos se controlan con la clave.
+- **No se usa `supabase-js` obligatoriamente.** Un `fetch` directo basta y permite `next: { revalidate }`
+  de Next.js. Si se prefiere `supabase-js`, ver 5B.7.
+- **No se usan Auth, Storage, Realtime ni Edge Functions.** La web es de solo lectura y sin usuarios.
+
+### 5B.2 Datos del proyecto
+
+| Dato | Valor |
+|---|---|
+| Nombre del proyecto | `job-hunter-agent` (**compartido** con otra app: solo se tocan objetos `offer_*`) |
+| Referencia (`ref`) | `qxwxftmlqimfausocwoi` |
+| URL de la API | `https://qxwxftmlqimfausocwoi.supabase.co` |
+| Base de la Data API | `https://qxwxftmlqimfausocwoi.supabase.co/rest/v1` |
+| Región | `us-east-1` (usar la región de funciones de Vercel `iad1`, cercana) |
+| Versión de Postgres | 17 |
+| Estado | `ACTIVE_HEALTHY` |
+| Esquema expuesto por la API | `public` (el único; no hay que enviar `Accept-Profile`) |
+
+### 5B.3 Credenciales
+
+| Variable (solo servidor) | Valor | Dónde se obtiene |
+|---|---|---|
+| `SUPABASE_URL` | `https://qxwxftmlqimfausocwoi.supabase.co` | Está arriba; no es secreto |
+| `SUPABASE_SERVICE_KEY` | **Clave secreta** (`sb_secret_…`) | Dashboard de Supabase → *Project Settings* → *API Keys* → *Secret keys* |
+
+Reglas:
+
+1. **Crear una clave secreta propia para la web** (por ejemplo, llamarla `web-vercel`), en lugar de
+   reutilizar la del pipeline. Así se puede **rotar o revocar una sin afectar a la otra**. Esto solo se
+   puede hacer en el dashboard: pídeselo al usuario, nunca la pegues en el chat ni en el repositorio.
+2. **Cabeceras de cada petición:**
+   - `apikey: <SUPABASE_SERVICE_KEY>` (siempre).
+   - `Authorization: Bearer <SUPABASE_SERVICE_KEY>` **solo si** la clave empieza con `eyJ` (clave JWT
+     antigua `service_role`). Las claves nuevas `sb_secret_…` **no son JWT y no van en `Authorization`**.
+   - `Accept: application/json`.
+3. **No usar la clave `anon` ni la publicable** (`sb_publishable_…`). Existen en el proyecto, pero las
+   tablas `offer_*` están cerradas para esos roles a propósito (RLS activado, sin políticas, permisos
+   revocados). Con ellas la web recibiría `401`/`403` con `permission denied`. No abrir las tablas para
+   hacerlas funcionar (ver 5B.10 si realmente se quiere acceso público).
+4. El nombre de la variable **nunca** lleva el prefijo `NEXT_PUBLIC_` (Next.js lo enviaría al navegador).
+
+**Dónde se configuran:**
+
+| Entorno | Cómo |
+|---|---|
+| Local | `web/.env.local` (en `.gitignore`; nunca se sube). El repositorio solo tiene `web/.env.example` con los nombres |
+| Vercel | *Project Settings* → *Environment Variables*: `SUPABASE_URL` y `SUPABASE_SERVICE_KEY` en **Production, Preview y Development**; la clave marcada como **Sensitive** |
+| GitHub Actions | No hace falta para la web. (El pipeline ya tiene sus propios secretos en el environment `env`.) |
+
+### 5B.4 Objetos de la base de datos que usa la web
+
+| Objeto | Tipo | Acceso | Para qué | Estado hoy |
+|---|---|---|---|---|
+| `offer_feed` | Vista materializada | `SELECT` | Listado, filtros, ficha, relacionados | ⏳ **No existe**: migración `0002` pendiente |
+| `offer_price_points` | Tabla | `SELECT` | Gráfico del historial de precios | ✅ Existe (`id, product_id, observed_at, price, list_price, source`) |
+| `offer_stats()` | Función (RPC) | `EXECUTE` | Contadores de la portada y de los filtros | ⏳ **No existe**: migración `0004` por crear |
+| `offer_scan_runs` | Tabla | `SELECT` | (Opcional) "Última actualización" y estado de las tiendas | ✅ Existe (`started_at, scanned, per_store, store_status, errors, quota, …`) |
+| `offer_refresh_feed()` | Función (RPC) | `EXECUTE` | **La llama el pipeline**, no la web | ⏳ Migración `0002` pendiente |
+| `offer_products`, `offer_sent` | Tablas | — | **La web no las usa** (todo sale de `offer_feed`) | ✅ Existen |
+
+Columnas de `offer_feed` (definidas en `supabase/migrations/0002_offer_feed.sql`; es la fuente de
+verdad si algo cambia):
+
+| Columna | Tipo | Significado |
+|---|---|---|
+| `id` | text | `"falabella:80726514"`; único. En la URL de la ficha: `/oferta/falabella/80726514` |
+| `store`, `title`, `url`, `image_url` | text | Tienda, título, enlace a la tienda, foto |
+| `category`, `category_group` | text | Etiqueta original y grupo (`tecnologia`, `muebles`, `zapatillas`, `ropa`, `belleza`, `mascotas`, `herramientas`, `otros`) |
+| `price`, `list_price`, `saving` | int | Precio actual, precio tachado, ahorro en pesos |
+| `web_discount_pct` | numeric | Descuento que **anuncia la tienda** |
+| `verified_pct` | numeric | Descuento **verificado** con nuestro historial (el que se debe destacar) |
+| `web_confirmed` | boolean | El precio "normal" tachado se cobró de verdad antes |
+| `history_drop_pct` | numeric | Baja contra el mínimo anterior que vimos |
+| `points`, `distinct_prices`, `hist_min`, `hist_max`, `prev_min`, `prev_max`, `first_point_at` | | Datos del historial para el panel "¿Es una oferta real?" |
+| `first_seen_at`, `last_seen_at`, `updated_at` | timestamptz | `last_seen_at` define si el producto sigue vigente (ver abajo) |
+
+**Producto vigente:** `last_seen_at >= now() - interval '6 hours'`. Se aplica **en cada consulta**
+de la web (el pipeline actualiza `last_seen_at` como máximo una vez por hora por producto).
+
+### 5B.5 Peticiones exactas
+
+En los ejemplos `$U` es `SUPABASE_URL` y `$K` es `SUPABASE_SERVICE_KEY`. Todas llevan
+`-H "apikey: $K"` (más `Authorization` solo con claves `eyJ…`). Los valores de filtros siempre
+codificados en URL.
+
+```bash
+# Listado con filtros, orden y paginación (+ total en la cabecera Content-Range)
+curl -sD - "$U/rest/v1/offer_feed?select=id,store,title,url,image_url,category_group,price,list_price,web_discount_pct,saving,verified_pct,web_confirmed,history_drop_pct,points,last_seen_at\
+&last_seen_at=gte.2026-10-03T06:00:00Z\
+&category_group=eq.tecnologia\
+&store=in.(falabella,sodimac)\
+&verified_pct=gte.30\
+&price=gte.10000&price=lte.200000\
+&title=ilike.*taladro*\
+&order=verified_pct.desc,web_discount_pct.desc&limit=24&offset=0" \
+  -H "apikey: $K" -H "Prefer: count=exact"
+#   → cuerpo: JSON con hasta 24 filas · cabecera: Content-Range: 0-23/1234
+
+# Ficha de un producto
+curl -s "$U/rest/v1/offer_feed?id=eq.falabella:80726514&limit=1" -H "apikey: $K"
+
+# Historial de precios (para el gráfico)
+curl -s "$U/rest/v1/offer_price_points?product_id=eq.falabella:80726514&select=observed_at,price,list_price&order=observed_at.asc" -H "apikey: $K"
+
+# Relacionados: misma categoría, mejores descuentos verificados
+curl -s "$U/rest/v1/offer_feed?category_group=eq.tecnologia&id=neq.falabella:80726514&order=verified_pct.desc&limit=8" -H "apikey: $K"
+
+# Estadísticas de portada (RPC; cuerpo JSON vacío)
+curl -s -X POST "$U/rest/v1/rpc/offer_stats" -H "apikey: $K" -H "Content-Type: application/json" -d '{}'
+
+# (Opcional) estado del servicio: última exploración y por tienda
+curl -s "$U/rest/v1/offer_scan_runs?select=started_at,scanned,store_status&order=started_at.desc&limit=1" -H "apikey: $K"
+```
+
+Operadores de filtro de PostgREST que usa la web: `eq`, `neq`, `gte`, `lte`, `in.(a,b)`, `ilike`
+(comodín `*`, no `%`), `order=col.desc,col2.desc`, `limit`, `offset`, `select=col1,col2`. Un valor
+con `,` `(` `)` `*` `%` se **escapa o se rechaza antes de enviarlo** (ver 5.3 del plan).
+
+### 5B.6 Límites, tiempos y caché
+
+| Tema | Valor | Qué hacer |
+|---|---|---|
+| Tiempo máximo de una consulta | **8 s** (`statement_timeout` del rol de la API; verificado) | Consultar solo `offer_feed` (con índices) y `select` con columnas concretas; nunca `select=*` en listados |
+| Filas máximas por respuesta | 1.000 por defecto en PostgREST de Supabase (*por verificar* en este proyecto) | La web pagina de a 24 (máximo 48); no hace falta tocarlo |
+| Tiempo de espera del cliente | 10 s por petición, 1 reintento solo en errores 5xx/red | Si falla, mostrar el estado de error y **no cachearlo** |
+| Caché | `revalidate = 120` s para listado, ficha y estadísticas | El pipeline actualiza datos cada ~15 min |
+| Volumen | ~32.000 productos vigentes; respuesta de un listado de 24: unas decenas de KB | Medir el *egress* en el dashboard tras el despliegue (el plan gratis de Supabase tiene cupo mensual; *por verificar*) |
+| Pausa por inactividad | Los proyectos gratis se pausan tras días sin actividad (*por verificar* el plazo) | No aplica mientras el pipeline escriba cada 15 min, pero **si se detiene el pipeline, la web dejará de responder** |
+
+### 5B.7 Código de referencia (`web/src/lib/supabase.ts`)
+
+Único archivo que conoce la clave. Solo lecturas.
+
+```ts
+// web/src/lib/supabase.ts  — server only
+import "server-only";
+
+const URL = process.env.SUPABASE_URL;
+const KEY = process.env.SUPABASE_SERVICE_KEY;
+
+if (!URL || !KEY) {
+  throw new Error("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set (server environment only)");
+}
+
+function headers(extra: Record<string, string> = {}): HeadersInit {
+  const h: Record<string, string> = { apikey: KEY!, Accept: "application/json", ...extra };
+  if (KEY!.startsWith("eyJ")) h.Authorization = `Bearer ${KEY}`; // legacy JWT keys only
+  return h;
+}
+
+export class SupabaseError extends Error {
+  constructor(public status: number, public code: string | undefined, message: string) {
+    super(message);
+  }
+}
+
+export async function rest<T>(
+  path: string,                       // e.g. "offer_feed?select=id,title&limit=24"
+  opts: { revalidate?: number; count?: boolean; method?: "GET" | "POST"; body?: unknown } = {},
+): Promise<{ rows: T; total: number | null }> {
+  const res = await fetch(`${URL}/rest/v1/${path}`, {
+    method: opts.method ?? "GET",
+    headers: headers({
+      ...(opts.count ? { Prefer: "count=exact" } : {}),
+      ...(opts.body ? { "Content-Type": "application/json" } : {}),
+    }),
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+    signal: AbortSignal.timeout(10_000),
+    next: { revalidate: opts.revalidate ?? 120 },
+  });
+  if (!res.ok) {
+    let code: string | undefined;
+    let message = res.statusText;
+    try {
+      const err = await res.json();
+      code = err.code;
+      message = err.message ?? message;
+    } catch { /* body was not JSON */ }
+    // Never include the key or the full URL in the error shown to visitors.
+    throw new SupabaseError(res.status, code, message);
+  }
+  const total = res.headers.get("content-range")?.split("/")[1];
+  return { rows: (await res.json()) as T, total: total && total !== "*" ? Number(total) : null };
+}
+```
+
+Tipos mínimos (`web/src/lib/types.ts`): `FeedRow` con las columnas de 5B.4 que se usan, y
+`PricePoint = { observed_at: string; price: number; list_price: number | null }`.
+
+*Alternativa con `supabase-js`* (si el agente la prefiere): `createClient(URL, KEY, { auth: { persistSession:
+false, autoRefreshToken: false } })` creado **solo en el servidor**; `.from("offer_feed").select(...)`,
+`.rpc("offer_stats")`. Con `supabase-js` el control de caché de Next.js es menos directo.
+
+### 5B.8 Prueba de conexión (antes de escribir la web)
+
+Crear `web/scripts/check-supabase.mjs` que lea `.env.local` y haga, **en este orden**, mostrando
+OK/FALLA por paso (sin imprimir la clave):
+
+1. `GET offer_scan_runs?select=started_at&limit=1` → debe devolver 1 fila reciente (prueba URL + clave + permisos).
+2. `GET offer_feed?select=id&limit=1` con `Prefer: count=exact` → total mayor que 30.000 (prueba que la migración `0002` está aplicada).
+3. `POST rpc/offer_stats` → JSON con `total`, `verified`, `stores`, `groups` (prueba la migración `0004`).
+4. `GET offer_price_points?select=product_id&limit=1` → 1 fila.
+
+Si algún paso falla, **parar** y consultar la tabla de errores:
+
+| Respuesta | Causa más probable | Solución |
+|---|---|---|
+| `401` `Invalid API key` | Clave mal copiada, revocada o con espacios; URL de otro proyecto | Revisar `SUPABASE_URL` y `SUPABASE_SERVICE_KEY` |
+| `401/403` `permission denied for table …` (`42501`) | Se está usando la clave `anon`/publicable | Usar la clave secreta; no abrir las tablas |
+| `404` `PGRST205` / `relation … does not exist` | Migración no aplicada (`offer_feed`) o nombre mal escrito | Aplicar `0002`; revisar el nombre |
+| `404` `PGRST202` / función no encontrada | `offer_stats` o `offer_refresh_feed` no creadas | Aplicar la migración que corresponda |
+| `400` `column … does not exist` | La consulta pide una columna que no existe en `offer_feed` | Comparar con 5B.4 |
+| `406` `PGRST106` esquema inválido | Se envió `Accept-Profile` con un esquema no expuesto | Quitar la cabecera; todo está en `public` |
+| `500` `57014` `canceling statement due to statement timeout` | Consulta más lenta que 8 s (por ejemplo sin límite o sobre la tabla de historial completa) | Paginar, filtrar por índice, usar `offer_feed` |
+| `429` | Demasiadas peticiones | Aumentar la caché; reintentar con espera |
+| Respuestas vacías `[]` con la clave correcta | Filtro `last_seen_at` demasiado estricto, o el pipeline no está actualizando | Revisar `select max(last_seen_at) from offer_feed` |
+
+### 5B.9 Orden de preparación (todo debe estar listo antes de la fase 3 del plan)
+
+- [ ] Migración `0002_offer_feed.sql` aplicada (vista, `last_seen_at`, función de refresco).
+- [ ] Migración `0004_offer_stats.sql` creada, validada en `begin; … rollback;` y aplicada.
+- [ ] El pipeline refresca `offer_feed` tras cada escaneo (fase 2 del plan).
+- [ ] Clave secreta propia de la web creada en el dashboard y cargada en Vercel y en `.env.local`.
+- [ ] `node web/scripts/check-supabase.mjs` pasa los 4 pasos.
+
+### 5B.10 Alternativas que NO se usan hoy (y cuándo considerarlas)
+
+| Alternativa | Por qué no ahora | Cuándo reconsiderar |
+|---|---|---|
+| **Lectura pública con la clave publicable** (`GRANT SELECT` de `offer_feed` a `anon`) | Abre la API a cualquiera con la clave pública y Supabase marca la vista materializada expuesta como advertencia. Cualquiera podría consultar la API directamente y gastar el cupo | Si se necesita que el navegador consulte directo (por ejemplo, filtros en vivo sin pasar por el servidor) y se acepta ese riesgo |
+| **Conexión directa a Postgres** (pooler `:6543`) | Requiere la contraseña de la base (no la tenemos) y gestionar conexiones | Si hacen falta consultas que PostgREST no permite |
+| **Un rol de Postgres de solo lectura propio** | Cerraría la brecha de que la clave de la web puede escribir; no se puede crear la clave de ese rol desde la API REST | Mejora de seguridad futura: crear el rol, usarlo con conexión directa o con JWT propio |
+
+Nota de seguridad: la clave secreta de la web **también puede escribir**. Por eso `lib/supabase.ts`
+solo expone lecturas (`GET` y la llamada `POST` a `offer_stats`) y la web no ofrece ninguna ruta que
+acepte datos del usuario hacia la base. Si la clave se filtra, **rotarla de inmediato** en Supabase
+y actualizarla en Vercel.
+
+---
+
 ## 6. Seguridad (lista obligatoria)
 
 - La clave secreta de Supabase **solo en el servidor**: variable de entorno de Vercel marcada
@@ -376,9 +636,9 @@ No somos las tiendas ni vendemos productos."
 
 | Fase | Trabajo | Terminado cuando |
 |---|---|---|
-| **1** | Migraciones 0002 y 0003 (sección 3) | `offer_feed` con >30.000 filas, `offer_stats()` correcto, sin avisos de seguridad nuevos |
+| **1** | Migraciones 0002 y 0004 (sección 3; la 0003, de diagnósticos por escaneo, **ya está aplicada**) | `offer_feed` con >30.000 filas, `offer_stats()` correcto, sin avisos de seguridad nuevos |
 | **2** | Refresco en el pipeline (sección 4) | Pruebas en verde y `last_seen_at` avanza tras un run |
-| **3** | Andamiaje de `web/`: Next.js, Tailwind, TypeScript, lint, `.env.example`, Vitest | `npm run build` y `npm test` pasan en un proyecto vacío |
+| **3** | Andamiaje de `web/`: Next.js, Tailwind, TypeScript, lint, `.env.example`, Vitest, `lib/supabase.ts` y `scripts/check-supabase.mjs` (sección 5B) | `npm run build` y `npm test` pasan, y `check-supabase.mjs` pasa los 4 pasos |
 | **4** | Capa de datos y utilidades (`data.ts`, `filters.ts`, `format.ts`, `tiers.ts`) con pruebas | Pruebas de `lib/` en verde; una consulta real devuelve 24 productos |
 | **5** | Páginas y componentes (portada, ficha, método, filtros, tarjetas) | La portada filtra y ordena por URL; la ficha muestra gráfico y panel; responsive revisado en 360, 768 y 1280 px |
 | **6** | Calidad (sección 5.8) y seguridad (sección 6) | Lighthouse ≥ metas; el chequeo de secretos pasa; revisión de accesibilidad con teclado |
