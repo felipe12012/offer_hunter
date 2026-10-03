@@ -87,3 +87,45 @@ def test_fetch_deals_includes_extra_hites_queries_without_duplicates(monkeypatch
     hites.fetch_deals({"keywords": ["notebook"], "scan": {"hites_queries": ["notebook", "televisor"]}})
 
     assert sorted(set(queried)) == ["notebook", "televisor"]
+
+
+def test_a_search_with_no_results_is_not_an_error_but_a_page_without_tiles_that_is_large_is():
+    import pytest as _pytest
+    from sources import hites
+    from sources.health import NoResultsError
+
+    empty_fragment = "<script>window.topsortTrackingConfig = {};</script>" + " " * 1500   # what the grid returns for 0 results
+    with _pytest.raises(NoResultsError):
+        hites.parse_html(empty_fragment, category="kerastase")
+
+    broken_layout = "<html><body>" + "<div>x</div>" * 3000 + "</body></html>"           # big page, no tiles: layout changed
+    with _pytest.raises(RuntimeError) as err:
+        hites.parse_html(broken_layout, category="notebook")
+    assert not isinstance(err.value, NoResultsError)
+
+
+def test_running_off_the_end_of_the_results_keeps_the_earlier_pages(monkeypatch):
+    """A query with exactly one full page asks for page 2 and gets the empty fragment;
+    it used to raise and throw away the 48 products already read."""
+    from sources import hites
+
+    full_page = (Path(__file__).parent / "fixtures" / "hites_sample.html").read_text(encoding="utf-8")
+    empty_fragment = "<script>x</script>" + " " * 1500
+    pages = {0: full_page, 1: empty_fragment}
+    monkeypatch.setattr(hites, "fetch_html", lambda q, start=0: pages[start // 1])
+    monkeypatch.setattr(hites, "PAGE_SIZE", 1)
+    monkeypatch.setattr(hites.time, "sleep", lambda s: None)
+
+    deals = hites._scan_query("fila", max_pages=3)
+
+    assert deals                                  # page 1 survived
+
+
+def test_an_empty_first_page_is_reported_as_no_results(monkeypatch):
+    import pytest as _pytest
+    from sources import hites
+    from sources.health import NoResultsError
+
+    monkeypatch.setattr(hites, "fetch_html", lambda q, start=0: "<script>x</script>" + " " * 1500)
+    with _pytest.raises(NoResultsError):
+        hites._scan_query("redken", max_pages=3)

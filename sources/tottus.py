@@ -10,6 +10,7 @@ from playwright.sync_api import sync_playwright
 
 from models import Deal
 from sources.images import pick_image, scroll_to_load
+from sources import health
 
 SEARCH_URL = "https://www.tottus.cl/tottus-cl/buscar?Ntt={query}"
 BASE_URL = "https://www.tottus.cl"
@@ -141,7 +142,7 @@ def fetch_deals(watchlist: dict) -> list[Deal]:
             deals.extend(parse_html(fetch_html(keyword), category=keyword))
         except Exception as exc:
             failures += 1
-            print(f"tottus keyword {keyword!r} failed: {exc}", file=sys.stderr)
+            health.warn("tottus", f"tottus keyword {keyword!r} failed: {exc}")
     if keywords and failures == len(keywords):
         raise RuntimeError("All Tottus keywords failed")
     return deals

@@ -120,7 +120,7 @@ Después de aplicar:
   informativos de "RLS sin políticas" en las tablas `offer_*`, y un aviso sobre la vista
   materializada accesible por API **solo si** alguien le dio permisos a `anon`; no debe haberlos.
 
-### 1.2 Crear `supabase/migrations/0003_offer_stats.sql`
+### 1.2 Crear `supabase/migrations/0004_offer_stats.sql`
 Función de estadísticas para la portada. **El SQL de abajo NO está probado**: valídalo dentro de
 `begin; … rollback;` antes de aplicarlo.
 

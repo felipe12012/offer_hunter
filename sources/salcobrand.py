@@ -28,6 +28,7 @@ from patchright.sync_api import sync_playwright
 
 from models import Deal
 from sources.images import pick_image, scroll_to_load
+from sources import health
 
 SEARCH_URL = "https://salcobrand.cl/search_result?query={query}"
 BASE_URL = "https://salcobrand.cl"
@@ -149,7 +150,7 @@ def fetch_deals(watchlist: dict) -> list[Deal]:
             deals.extend(parse_html(fetch_html(keyword), category=keyword))
         except Exception as exc:
             failures += 1
-            print(f"salcobrand keyword {keyword!r} failed: {exc}", file=sys.stderr)
+            health.warn("salcobrand", f"salcobrand keyword {keyword!r} failed: {exc}")
     if keywords and failures == len(keywords):
         raise RuntimeError("All Salcobrand keywords failed")
     return deals

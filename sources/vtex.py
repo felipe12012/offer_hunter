@@ -15,6 +15,7 @@ from urllib.parse import quote
 import requests
 
 from models import Deal
+from sources import health
 
 HEADERS = {
     "User-Agent": (
@@ -145,7 +146,7 @@ def fetch_store_deals(
                     break
         except Exception as exc:  # noqa: BLE001 - isolate one bad keyword
             failures += 1
-            print(f"{cfg.store} keyword {keyword!r} failed: {exc}", file=sys.stderr)
+            health.warn(cfg.store, f"{cfg.store} keyword {keyword!r} failed: {exc}")
     if keywords and failures == len(keywords):
         raise RuntimeError(f"All {cfg.store} searches failed")
     return list(deals.values())

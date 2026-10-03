@@ -18,6 +18,9 @@ from bs4 import BeautifulSoup
 
 from models import Deal
 from sources.images import pick_image
+from sources import health
+from sources.health import NoResultsError
+from sources.sfcc import is_empty_fragment, run_queries
 
 BASE_URL = "https://www.farmaciasahumada.cl"
 GRID_URL = (
@@ -110,6 +113,8 @@ def parse_html(html: str, category: str) -> list["Deal"]:
     soup = BeautifulSoup(html, "html.parser")
     cards = soup.select(CARD_SELECTOR)
     if not cards:
+        if is_empty_fragment(html):
+            raise NoResultsError("Farmacias Ahumada returned no products for this search")
         title = soup.title.get_text(strip=True) if soup.title else "<no title>"
         raise RuntimeError(
             "No product cards found on Farmacias Ahumada search results page; "
@@ -147,7 +152,12 @@ def _scan_query(query: str, max_pages: int) -> list[Deal]:
     for page in range(max_pages):
         if page:
             time.sleep(REQUEST_DELAY_SECONDS)
-        found = parse_html(fetch_html(query, page * PAGE_SIZE), category=query)
+        try:
+            found = parse_html(fetch_html(query, page * PAGE_SIZE), category=query)
+        except NoResultsError:
+            if page == 0:
+                raise  # the query matches nothing at all
+            break  # ran off the end: keep what the earlier pages found
         new = [deal for deal in found if deal.id not in deals]
         for deal in new:
             deals[deal.id] = deal
@@ -160,18 +170,4 @@ def fetch_deals(watchlist: dict) -> list[Deal]:
     scan = watchlist.get("scan", {})
     max_pages = scan.get("max_ahumada_pages", DEFAULT_MAX_PAGES)
     keywords = list(dict.fromkeys(watchlist.get("keywords", [])))
-
-    deals: dict[str, Deal] = {}
-    failures = 0
-    for keyword in keywords:
-        # One keyword can resolve to a page with no grid — isolate it instead of
-        # letting it abort every other keyword.
-        try:
-            for deal in _scan_query(keyword, max_pages):
-                deals.setdefault(deal.id, deal)
-        except Exception as exc:
-            failures += 1
-            print(f"ahumada keyword {keyword!r} failed: {exc}", file=sys.stderr)
-    if keywords and failures == len(keywords):
-        raise RuntimeError("All Farmacias Ahumada keywords failed")
-    return list(deals.values())
+    return run_queries("ahumada", keywords, lambda keyword: _scan_query(keyword, max_pages))

@@ -10,6 +10,9 @@ from bs4 import BeautifulSoup
 
 from models import Deal
 from sources.images import pick_image
+from sources import health
+from sources.health import NoResultsError
+from sources.sfcc import is_empty_fragment, run_queries
 
 GRID_URL = (
     "https://www.hites.com/on/demandware.store/Sites-HITES-Site/default/"
@@ -84,6 +87,8 @@ def parse_html(html: str, category: str) -> list[Deal]:
     soup = BeautifulSoup(html, "html.parser")
     cards = soup.select(".product-tile")
     if not cards:
+        if is_empty_fragment(html):
+            raise NoResultsError("Hites returned no products for this search")
         title = soup.title.get_text(strip=True) if soup.title else "<no title>"
         raise RuntimeError(
             "No product cards found on Hites search results page; "
@@ -120,7 +125,12 @@ def _scan_query(query: str, max_pages: int) -> list[Deal]:
     for page in range(max_pages):
         if page:
             time.sleep(REQUEST_DELAY_SECONDS)
-        found = parse_html(fetch_html(query, page * PAGE_SIZE), category=query)
+        try:
+            found = parse_html(fetch_html(query, page * PAGE_SIZE), category=query)
+        except NoResultsError:
+            if page == 0:
+                raise  # the query matches nothing at all
+            break  # ran off the end: keep what the earlier pages found
         new = [deal for deal in found if deal.id not in deals]
         for deal in new:
             deals[deal.id] = deal
@@ -133,18 +143,4 @@ def fetch_deals(watchlist: dict) -> list[Deal]:
     scan = watchlist.get("scan", {})
     max_pages = scan.get("max_hites_pages", DEFAULT_MAX_PAGES)
     queries = list(dict.fromkeys([*watchlist.get("keywords", []), *scan.get("hites_queries", [])]))
-
-    deals: dict[str, Deal] = {}
-    failures = 0
-    for query in queries:
-        # One query can resolve to a page with no grid — isolate it instead of
-        # letting it abort every other query.
-        try:
-            for deal in _scan_query(query, max_pages):
-                deals.setdefault(deal.id, deal)
-        except Exception as exc:
-            failures += 1
-            print(f"hites query {query!r} failed: {exc}", file=sys.stderr)
-    if queries and failures == len(queries):
-        raise RuntimeError("All Hites queries failed")
-    return list(deals.values())
+    return run_queries("hites", queries, lambda query: _scan_query(query, max_pages))

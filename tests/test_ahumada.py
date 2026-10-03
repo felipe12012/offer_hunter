@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pytest
 
+from sources.health import NoResultsError
+
 from sources.ahumada import parse_html
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "ahumada_sample.html"
@@ -79,14 +81,22 @@ def test_parse_html_skips_cards_without_a_positive_price():
     assert [d.id for d in result] == ["ahumada:111"]
 
 
-def test_parse_html_raises_on_zero_cards():
-    html = "<html><head><title>Ahumada</title></head><body>no products</body></html>"
+def test_parse_html_raises_with_diagnostics_when_a_full_size_page_has_no_cards():
+    # A real-sized page without product cards means the layout changed (or a block page).
+    html = "<html><head><title>Ahumada</title></head><body>" + "<p>x</p>" * 2500 + "</body></html>"
     with pytest.raises(RuntimeError) as excinfo:
         parse_html(html, category="crema")
 
     message = str(excinfo.value)
+    assert not isinstance(excinfo.value, NoResultsError)
     assert "Ahumada" in message
     assert str(len(html)) in message
+
+
+def test_parse_html_treats_a_tiny_fragment_as_no_results_not_as_a_failure():
+    html = "<html><head><title>Ahumada</title></head><body>no products</body></html>"
+    with pytest.raises(NoResultsError):
+        parse_html(html, category="crema")
 
 
 def test_fetch_deals_isolates_a_failing_keyword(monkeypatch):

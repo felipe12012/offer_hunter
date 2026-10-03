@@ -18,6 +18,7 @@ from urllib.parse import parse_qsl, quote, urlencode, urljoin, urlsplit, urlunsp
 import requests
 
 from models import Deal
+from sources import health
 
 HEADERS = {
     "User-Agent": (
@@ -216,7 +217,7 @@ def fetch_store_deals(
                 fetch_home(cfg.home_url), cfg, patterns, scan.get("max_categories", DEFAULT_MAX_CATEGORIES)
             )
         except Exception as exc:
-            print(f"{cfg.store} category discovery failed: {exc}", file=sys.stderr)
+            health.warn(cfg.store, f"{cfg.store} category discovery failed: {exc}")
             categories = []
         for group, category_id, slug in categories:
             jobs.append((group, cfg.category_url.format(id=category_id, slug=slug), max_category))
@@ -238,7 +239,7 @@ def fetch_store_deals(
     for found, error in outcomes:  # jobs are ordered: categories first, so their label wins
         if error:
             failures += 1
-            print(error, file=sys.stderr)
+            health.warn(cfg.store, error)
         for deal in found:
             deals.setdefault(deal.id, deal)
 
