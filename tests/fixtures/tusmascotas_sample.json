@@ -1,0 +1,61 @@
+{
+  "products": [
+    {
+      "id": 952486,
+      "name": "Alimento Humedo Hills C/D Canino 368grs",
+      "sku": "052742700106",
+      "permalink": "https://www.tusmascotas.cl/product/alimento-humedo-hills-c-d-canino-368grs/",
+      "prices": {
+        "price": "3090",
+        "regular_price": "5151",
+        "sale_price": "3090",
+        "currency_code": "CLP",
+        "currency_minor_unit": 0
+      },
+      "images": [
+        {
+          "id": 953166,
+          "src": "https://www.tusmascotas.cl/wp-content/uploads/2026/03/isi-41.png"
+        }
+      ]
+    },
+    {
+      "id": 952486,
+      "name": "Alimento Humedo Hills C/D Canino 368grs",
+      "sku": "052742700106",
+      "permalink": "https://www.tusmascotas.cl/product/alimento-humedo-hills-c-d-canino-368grs/",
+      "prices": {
+        "price": "3090",
+        "regular_price": "5151",
+        "sale_price": "3090",
+        "currency_code": "CLP",
+        "currency_minor_unit": 0
+      },
+      "images": [
+        {
+          "id": 953166,
+          "src": "https://www.tusmascotas.cl/wp-content/uploads/2026/03/isi-41.png"
+        }
+      ]
+    },
+    {
+      "id": 1150201,
+      "name": "OUTLET - Fecha Corta (01/09/2026) - Mazuri Mini Bird Diet 0,90kg",
+      "sku": "55004750",
+      "permalink": "https://www.tusmascotas.cl/product/outlet-fecha-corta-01-09-2026-mazuri-mini-bird-diet-090kg/",
+      "prices": {
+        "price": "8470",
+        "regular_price": "8470",
+        "sale_price": "8470",
+        "currency_code": "CLP",
+        "currency_minor_unit": 0
+      },
+      "images": [
+        {
+          "id": 1150209,
+          "src": "https://www.tusmascotas.cl/wp-content/uploads/2026/08/Mazuri-Mini-Bird-Diet-090kg.jpg"
+        }
+      ]
+    }
+  ]
+}

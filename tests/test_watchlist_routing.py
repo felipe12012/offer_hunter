@@ -38,3 +38,12 @@ def test_non_shoe_stores_keep_the_full_watchlist():
 
     assert main_fast.watchlist_for("falabella", watchlist) is watchlist
     assert main_fast.watchlist_for("sodimac", watchlist) is watchlist
+
+
+def test_pet_stores_get_the_pet_keyword_list():
+    watchlist = {"keywords": ["zapatillas", "alimento perro", "notebook"]}
+
+    for store in ("laikamascotas", "tusmascotas"):
+        narrowed = main_fast.watchlist_for(store, watchlist)
+        assert narrowed["keywords"] == main_fast.PET_KEYWORDS
+        assert "perro" in narrowed["keywords"] and "gato" in narrowed["keywords"]

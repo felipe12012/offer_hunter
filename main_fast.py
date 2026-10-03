@@ -43,6 +43,7 @@ from sources.skechers import fetch_deals as fetch_skechers_deals
 from sources.sodimac import fetch_deals as fetch_sodimac_deals
 from sources.tottus import fetch_deals as fetch_tottus_deals
 from sources.tricot import fetch_deals as fetch_tricot_deals
+from sources.tusmascotas import fetch_deals as fetch_tusmascotas_deals
 from sources.vans import fetch_deals as fetch_vans_deals
 
 # The single roster of registered sources as (store, module attribute name).
@@ -74,6 +75,7 @@ SOURCE_FETCHERS = [
     ("lapolar", "fetch_lapolar_deals"),
     ("tricot", "fetch_tricot_deals"),
     ("laikamascotas", "fetch_laikamascotas_deals"),
+    ("tusmascotas", "fetch_tusmascotas_deals"),
 ]
 SOURCE_NAMES = [attr for _store, attr in SOURCE_FETCHERS]
 
@@ -122,12 +124,31 @@ PHARMACY_KEYWORDS = [
     "maquillaje",
 ]
 
+# Dedicated pet stores: the phrase queries in the global watchlist ("alimento
+# perro") match very little on a WooCommerce search, so they get single-word pet
+# terms too.
+PET_STORES = {"laikamascotas", "tusmascotas"}
+PET_KEYWORDS = [
+    "alimento perro",
+    "alimento gato",
+    "arena gato",
+    "alimento",
+    "perro",
+    "gato",
+    "arena",
+    "snack",
+    "higiene",
+    "juguete",
+]
+
 
 def watchlist_for(store: str, watchlist: dict) -> dict:
     if store in BROWSER_SHOE_STORES:
         return {**watchlist, "keywords": BROWSER_SHOE_KEYWORDS}
     if store in PHARMACY_STORES:
         return {**watchlist, "keywords": PHARMACY_KEYWORDS}
+    if store in PET_STORES:
+        return {**watchlist, "keywords": PET_KEYWORDS}
     return watchlist
 
 SEEN_PATH = Path(__file__).parent / "data" / "seen_items.json"
