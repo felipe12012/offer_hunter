@@ -204,5 +204,26 @@ class SupabaseSync:
         return int(response.headers["Content-Range"].rsplit("/", 1)[1])
 
 
+    def recent_store_status(self, limit: int = 2) -> list[dict | None]:
+        """Per-store status of the latest runs, newest first: [{store: status}, ...].
+
+        A run recorded before diagnostics existed (no store_status) is ``None``."""
+        response = requests.get(
+            f"{self.url}/rest/v1/offer_scan_runs",
+            headers=self._headers(),
+            params={"select": "store_status", "order": "started_at.desc", "limit": limit},
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+        if response.status_code >= 400:
+            raise SupabaseError(
+                f"recent_store_status failed (HTTP {response.status_code}: {response.text[:200]})"
+            )
+        statuses: list[dict | None] = []
+        for row in response.json():
+            raw = row.get("store_status")
+            statuses.append({store: info.get("status") for store, info in raw.items()} if raw else None)
+        return statuses
+
+
 def log_failure(action: str, exc: Exception) -> None:
     print(f"Supabase {action} failed (JSON state is unaffected): {exc}", file=sys.stderr)

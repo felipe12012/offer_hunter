@@ -104,6 +104,15 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
+          # main_fast.py leaves the reason in run_status.txt when it knows why it failed.
+          reason="$(head -c 400 run_status.txt 2>/dev/null || true)"
+          header="⚠️ cyberday-hunter (fast tier): el pipeline falló."
+          logs="Logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ -n "$reason" ]; then
+            text="$(printf '%s\n%s\n%s' "$header" "Motivo: $reason" "$logs")"
+          else
+            text="$(printf '%s\n%s' "$header" "$logs")"
+          fi
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_CHAT_ID}" \
-            -d text="⚠️ cyberday-hunter (fast tier): el pipeline falló. Logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${text}"

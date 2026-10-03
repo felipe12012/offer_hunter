@@ -607,3 +607,27 @@ def test_the_daily_budget_can_shrink_the_unverified_quota(monkeypatch):
     send_offers(offers, bot_token="tok", chat_id="123", max_unverified=2)
 
     assert len(rec.calls) == 2
+
+
+# ---- plain text alerts (store health) -------------------------------------------
+
+def test_send_alert_sends_plain_text_to_the_main_chat(monkeypatch):
+    from notifier import send_alert
+
+    rec = Recorder()
+    install(monkeypatch, rec)
+
+    assert send_alert("🔴 hites caida", bot_token="tok", chat_id="123") is True
+
+    method, body, _files = rec.calls[0]
+    assert method == "sendMessage"
+    assert body["chat_id"] == "123" and body["text"] == "🔴 hites caida"
+    assert "parse_mode" not in body
+
+
+def test_send_alert_reports_failure_instead_of_raising(monkeypatch):
+    from notifier import send_alert
+
+    rec = Recorder(fail_methods=("sendMessage",))
+    install(monkeypatch, rec)
+    assert send_alert("x", bot_token="tok", chat_id="123") is False

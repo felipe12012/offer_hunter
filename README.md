@@ -35,10 +35,13 @@ Cada escaneo lee ~21.000 productos y tarda unos 4 minutos.
 |---|---|---|---|
 | **Falabella** | Activa | JSON incrustado (`__NEXT_DATA__`), HTTP simple | Búsquedas y ~60 categorías descubiertas desde el menú |
 | **Sodimac** | Activa | Igual que Falabella (misma plataforma) | Su `/category/` redirige al home: usa `/lista/` |
-| **Hites** | Activa | HTML paginado de `Search-UpdateGrid`, HTTP simple | Solo por consultas de texto |
-| Paris | Pausada | Navegador (Playwright) | Bloquea las IP de GitHub (HTTP 403) |
-| Ripley | Pausada | Navegador (Playwright) | Bloquea las IP de GitHub |
-| Tottus | Pausada | Navegador (Playwright) | Cloudflare bloquea las IP de GitHub |
+| **Hites** | Activa | HTML paginado de `Search-UpdateGrid`, HTTP simple | Por consultas de texto, 4 en paralelo |
+| **Ahumada** | Activa | Igual que Hites (Salesforce Commerce Cloud) | Farmacia: dermocosmética y belleza |
+| **Vans, Crocs, Merrell, Salomon, Hush Puppies** | Activas | API de Shopify, HTTP simple | `sources/shopify.py` |
+| **Asics, Reebok** | Activas | API de VTEX, HTTP simple | `sources/vtex.py` |
+| **Converse, Puma, New Balance, Fila, Skechers, Salcobrand, Cruz Verde** | Activas | Navegador (Playwright) | Requieren `INSTALL_BROWSER=true`; una consulta = un Chromium |
+| Paris, Ripley, Tottus | Pausadas | Navegador | Bloquean las IP de GitHub (HTTP 403) |
+| Nike | Pausada | Navegador (patchright) | Cloudflare |
 
 Las tiendas pausadas tienen código y pruebas, pero se omiten con `disabled_stores`.
 Plan para reactivarlas: [`docs/superpowers/plans/2026-10-02-hard-tier-unblock.md`](docs/superpowers/plans/2026-10-02-hard-tier-unblock.md).
@@ -216,7 +219,11 @@ select started_at, scanned, qualifying, delivered, per_store, duration_seconds f
 | `notifier.py` | Formato y envío a Telegram (foto, reintentos, respaldo) |
 | `sources/nextdata.py` | Lector común del JSON incrustado (Falabella y Sodimac): paginación, descubrimiento de categorías |
 | `sources/falabella.py`, `sodimac.py` | Configuración de cada tienda sobre `nextdata` |
-| `sources/hites.py` | Hites por HTML paginado |
+| `sources/hites.py`, `ahumada.py` | Tiendas SFCC por HTML paginado; usan `sources/sfcc.py` (consultas en paralelo; una búsqueda sin resultados no es un error) |
+| `sources/shopify.py`, `vtex.py` | Lectores comunes de tiendas Shopify y VTEX |
+| `sources/health.py` | Los scrapers reportan aquí fallos y consultas vacías; alimenta el reporte por tienda |
+| `reports.py` | Estado de cada tienda en cada run (tabla de log, resumen de GitHub, JSON para Supabase, caída/recuperación) |
+| `watchdog.py` | Vigilancia externa (workflow `watchdog.yml`): avisa si no hay escaneos recientes o una tienda cae a 0 |
 | `sources/paris.py`, `ripley.py`, `tottus.py` | Tiendas con navegador (pausadas) |
 | `sources/images.py` | Elige la foto real del producto y hace scroll para cargar imágenes diferidas |
 
@@ -226,7 +233,7 @@ select started_at, scanned, qualifying, delivered, per_store, duration_seconds f
 
 ```
 pip install -r requirements.txt
-python -m pytest -q          # 108 pruebas, sin red
+python -m pytest -q          # ~330 pruebas, sin red
 python main_fast.py          # escaneo real
 python main_fast.py --selftest
 ```
@@ -237,23 +244,46 @@ no definas esas variables. No hagas commit de `.env` (está en `.gitignore`).
 
 ---
 
-## 9. Diagnóstico rápido
+## 9. Diagnóstico: qué está pasando
 
-Cada run imprime en el log de Actions:
+Cada escaneo deja cuatro rastros, de más rápido a más detallado:
 
-```
-Deals per store: sodimac=8267, falabella=10575, hites=2166
-Scanned 21008 deals, 20562 new, 38 qualifying, 8894 advertised discounts discarded as unverified
-Telegram: delivered 25/38 individual messages (13 pending retry next run)
-```
+1. **Resumen del run en GitHub** (pestaña *Summary* del run en Actions): totales, cupo de alertas,
+   estado de Supabase y una **tabla con el estado de cada tienda** y sus primeros errores.
+2. **Log del run**, con una tabla por tienda y los totales:
+   ```
+   Store report:
+     falabella    ok         14926 deals   41.2s
+     hites        partial     3922 deals   63.0s  -> 1 consulta(s) con error
+     ahumada      FAILED         0 deals    5.0s  -> All Farmacias Ahumada queries failed
+   Scanned 34450 deals, 32631 new, 9222 qualifying (9222 unverified), 0 ...
+   Telegram: nothing sent: 9222 unverified candidates are waiting but the daily unverified quota is spent (60/60) and there are no verified offers
+   ```
+3. **Supabase**, tabla `offer_scan_runs`: columnas `store_status` (estado, productos, segundos y errores
+   por tienda), `errors` y `quota` de cada escaneo.
+   ```sql
+   select started_at, store_status->'hites' as hites, quota from offer_scan_runs order by started_at desc limit 10;
+   ```
+4. **Telegram**:
+   - 🔴 *"tienda X: sin datos en 2 escaneos seguidos"* con el motivo, una sola vez; y 🟢 *"recuperada"*.
+   - Si el pipeline falla, la alerta trae el **motivo** (`Motivo: …`), no solo el enlace.
+   - El *watchdog* avisa si no hay escaneos en 40 min o si una tienda cae a 0.
+
+**Estados de una tienda:** `ok` · `partial` (entregó productos pero algunas consultas fallaron) ·
+`failed` (error, o 0 productos con errores) · `timeout` (superó 7 min) · `empty` (0 productos y ningún
+error: sospechoso, suele ser un bloqueo o un cambio de la web) · `disabled`.
 
 | Síntoma | Causa probable |
 |---|---|
-| Una tienda con `=0` en `Deals per store` | La tienda bloquea la IP o cambió su estructura. Ver `… scraper failed` / `… scan of … failed` |
-| `qualifying` siempre 0 | Normal los primeros días: el historial aún no confirma descuentos. Se llena cuando los precios cambian |
+| Tienda en `empty` | Todas sus consultas devolvieron 0 productos: bloqueo de IP o cambio de estructura |
+| Tienda en `failed` con el mismo mensaje en cada run | Bloqueada o cambió su HTML. Reproducir con `python -c "from sources import <tienda>; …"` desde tu PC |
+| Muchas consultas "empty" en una tienda `ok` | Normal: una farmacia no vende "notebook". No se cuenta como error |
+| `Telegram: nothing sent … quota` | El cupo diario de no verificadas se agotó (60/día, se reinicia a medianoche UTC) y no hay verificadas. No es un fallo |
 | `delivered 0/N` y el run falla | Token o chat de Telegram incorrectos, o el bot nunca recibió un mensaje tuyo |
-| No hay runs cada 15 minutos | El cron de GitHub se salta ciclos; revisar el job de cron-job.org (error 401/403/404/422, ver `docs/trigger-setup.md`) |
-| Error en el paso "Commit updated data files" | Conflicto de `git` con otro commit. No debería ocurrir con el checkout de la punta de `main`; si pasa, revisar si alguien empujó cambios a `data/` a mano |
+| `qualifying` siempre 0 | Normal los primeros días: el historial aún no confirma descuentos |
+| No hay runs cada 15 minutos | El cron de GitHub se salta ciclos; revisar el job de cron-job.org (ver `docs/trigger-setup.md`) |
+| Error en "Commit updated data files" | Conflicto de `git`. No debería ocurrir con el checkout de la punta de `main`; revisar si alguien empujó a `data/` a mano |
+| El *watchdog* sale en rojo | No pudo leer `offer_scan_runs` de Supabase (clave o red); el mensaje está en su log |
 
 ---
 

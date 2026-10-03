@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import time
+import traceback
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime, timezone
@@ -13,8 +14,10 @@ from dotenv import load_dotenv
 from deal_filter import evaluate
 from dedup import deal_key, load_seen, mark_seen
 from models import Deal, ScoredDeal
-from notifier import send_offers
+from notifier import send_alert, send_offers
 from price_history import load_price_history, save_price_history, update_price_history
+from reports import StoreReport, build_report, format_log, store_transitions, to_json, to_markdown
+from sources import health
 from supabase_sync import SupabaseSync, log_failure
 from sources.ahumada import fetch_deals as fetch_ahumada_deals
 from sources.asics import fetch_deals as fetch_asics_deals
@@ -116,6 +119,9 @@ SEEN_PATH = Path(__file__).parent / "data" / "seen_items.json"
 HISTORY_PATH = Path(__file__).parent / "data" / "price_history.json"
 BUDGET_PATH = Path(__file__).parent / "data" / "alert_budget.json"
 WATCHLIST_PATH = Path(__file__).parent / "config" / "watchlist.json"
+# Why the last run failed, in one short text. The workflow's failure alert reads it
+# so the Telegram message says what happened instead of only "the pipeline failed".
+RUN_STATUS_PATH = Path(os.environ.get("RUN_STATUS_FILE") or Path(__file__).parent / "run_status.txt")
 # A whole scan finishes in ~6 minutes; give any single store generous room but
 # stop waiting forever, so one hung store cannot stall the run or the lock.
 SOURCE_TIMEOUT_SECONDS = 420
@@ -145,7 +151,12 @@ def load_watchlist() -> dict:
         return json.load(f)
 
 
-def fetch_all_deals(watchlist: dict) -> list[Deal]:
+def scan_stores(watchlist: dict) -> tuple[list[Deal], list[StoreReport]]:
+    """Scan every enabled store at the same time and report how each one did.
+
+    Returns the deals plus one StoreReport per registered store (disabled ones
+    included). Raises RuntimeError, with ``.reports`` attached, when every
+    enabled store failed."""
     # Resolved on every call so a monkeypatched module attribute is picked up —
     # same reasoning as job-hunter-agent/main.py.
     disabled = {name.lower() for name in watchlist.get("disabled_stores", [])}
@@ -157,12 +168,15 @@ def fetch_all_deals(watchlist: dict) -> list[Deal]:
     if not source_fetchers:
         raise RuntimeError("Every store is disabled in config/watchlist.json")
 
+    health.drain()  # discard events left over from anything that ran before this scan
+
     def run_source(source):
         name, fetch = source
+        began = time.time()
         try:
-            return name, fetch(watchlist_for(name, watchlist)), None
+            return name, fetch(watchlist_for(name, watchlist)), None, time.time() - began
         except Exception as exc:
-            return name, [], exc
+            return name, [], exc, time.time() - began
 
     # Stores are independent and network-bound: scan them at the same time, but
     # never wait forever. A store that overruns is treated as a failure and the
@@ -170,28 +184,46 @@ def fetch_all_deals(watchlist: dict) -> list[Deal]:
     executor = ThreadPoolExecutor(max_workers=len(source_fetchers))
     futures = {executor.submit(run_source, source): source[0] for source in source_fetchers}
     done, pending = wait(futures, timeout=SOURCE_TIMEOUT_SECONDS)
+    events = health.drain()
+
+    def store_events(store: str) -> list[dict]:
+        return [event for event in events if event["store"] == store]
 
     deals: list[Deal] = []
     failures = 0
+    by_store: dict[str, StoreReport] = {}
     for future in done:
-        name, found, error = future.result()
+        name, found, error, seconds = future.result()
         if error is not None:
             failures += 1
             print(f"{name} scraper failed: {error}", file=sys.stderr)
         deals.extend(found)
+        by_store[name] = build_report(name, len(found), seconds, store_events(name), raised=error)
     for future in pending:
         failures += 1
         future.cancel()
-        print(
-            f"{futures[future]} scraper timed out after {SOURCE_TIMEOUT_SECONDS}s",
-            file=sys.stderr,
+        name = futures[future]
+        print(f"{name} scraper timed out after {SOURCE_TIMEOUT_SECONDS}s", file=sys.stderr)
+        by_store[name] = build_report(
+            name, 0, SOURCE_TIMEOUT_SECONDS, store_events(name), timed_out=True
         )
     executor.shutdown(wait=False, cancel_futures=True)
 
-    if failures == len(source_fetchers):
-        raise RuntimeError("All fast-tier sources failed to fetch deals")
+    reports = [
+        by_store.get(store) or StoreReport(store=store, status="disabled")
+        for store, _attr in SOURCE_FETCHERS
+    ]
 
-    return deals
+    if failures == len(source_fetchers):
+        error = RuntimeError("All fast-tier sources failed to fetch deals")
+        error.reports = reports
+        raise error
+
+    return deals, reports
+
+
+def fetch_all_deals(watchlist: dict) -> list[Deal]:
+    return scan_stores(watchlist)[0]
 
 
 def dedupe_cross_store(candidates: list[ScoredDeal]) -> tuple[list[ScoredDeal], dict[str, list[str]]]:
@@ -219,6 +251,70 @@ def _store_summary(deals: list[Deal], disabled: list[str] | None = None) -> str:
     return ", ".join(f"{store}={count}" for store, count in counts.items())
 
 
+def write_step_summary(markdown: str) -> None:
+    """Append to the GitHub Actions run summary page (a no-op outside Actions)."""
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not path:
+        return
+    try:
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(markdown + "\n")
+    except OSError as exc:
+        print(f"Could not write the run summary: {exc}", file=sys.stderr)
+
+
+def clear_failure_reason() -> None:
+    try:
+        RUN_STATUS_PATH.unlink()
+    except OSError:
+        pass
+
+
+def record_failure(reason: str, reports: list[StoreReport] | None = None) -> int:
+    """Print why the run failed, keep the reason for the failure alert and put it
+    on the run summary. Returns the process exit code (1)."""
+    print(reason, file=sys.stderr)
+    try:
+        RUN_STATUS_PATH.write_text(reason[:400], encoding="utf-8")
+    except OSError as exc:
+        print(f"Could not write the failure reason: {exc}", file=sys.stderr)
+    parts = ["### ❌ Escaneo fallido", "", reason]
+    if reports:
+        parts += ["", "### Tiendas", "", to_markdown(reports)]
+    write_step_summary("\n".join(parts))
+    return 1
+
+
+def collect_errors(reports: list[StoreReport] | None, limit: int = 10) -> list[str]:
+    errors: list[str] = []
+    for report in reports or []:
+        messages = report.errors or ([report.detail] if report.detail and report.status != "ok" else [])
+        errors.extend(" ".join(message.split())[:200] for message in messages)
+    return errors[:limit]
+
+
+def announce_store_health(mirror, reports: list[StoreReport]) -> None:
+    """Telegram note when a store has failed two scans in a row (once, with the
+    reason) and when it comes back. Needs the previous runs from Supabase, so it
+    is skipped when they cannot be read; never fatal."""
+    try:
+        previous = mirror.recent_store_status(2)
+        down, recovered = store_transitions({r.store: r.status for r in reports}, previous)
+        if not down and not recovered:
+            return
+        by_store = {r.store: r for r in reports}
+        lines = []
+        for store in down:
+            report = by_store[store]
+            reason = report.detail or (report.errors[0] if report.errors else "sin detalle")
+            lines.append(f"🔴 {store}: sin datos en 2 escaneos seguidos ({report.status}). {reason[:160]}")
+        lines += [f"🟢 {store}: recuperada" for store in recovered]
+        if not send_alert("\n".join(lines)):
+            print("The store health alert could not be sent to Telegram", file=sys.stderr)
+    except Exception as exc:
+        print(f"Store health check skipped: {exc}", file=sys.stderr)
+
+
 def mirror_to_supabase(
     deals: list[Deal],
     delivered: list[ScoredDeal],
@@ -226,16 +322,21 @@ def mirror_to_supabase(
     new_deals: int,
     unverified: int,
     started: float,
-) -> None:
-    """Copy this run's results into Supabase when it is configured. Never fatal:
-    the JSON files stay the source of truth for decisions, so a database outage
-    must not stop alerts."""
+    reports: list[StoreReport] | None = None,
+    quota: dict | None = None,
+) -> str:
+    """Copy this run's results into Supabase when it is configured and return a
+    one-line status for the log and the run summary. Never fatal: the JSON files
+    stay the source of truth for decisions, so a database outage must not stop
+    alerts."""
     mirror = SupabaseSync.from_env()
     if mirror is None:
-        return
+        return "Supabase: no configurado (solo archivos JSON)"
     try:
         totals = mirror.sync_scan(deals)
         mirror.record_sent(delivered)
+        if reports:
+            announce_store_health(mirror, reports)  # compares with the runs BEFORE this one
         mirror.record_run(
             {
                 "github_run_id": os.environ.get("GITHUB_RUN_ID"),
@@ -246,26 +347,67 @@ def mirror_to_supabase(
                 "unverified": unverified,
                 "per_store": dict(Counter(deal.store for deal in deals)),
                 "duration_seconds": round(time.time() - started, 1),
+                "store_status": to_json(reports) if reports else None,
+                "errors": collect_errors(reports),
+                "quota": quota,
             }
         )
-        print(
+        line = (
             f"Supabase: {totals['received']} products received, {totals['new']} new, "
-            f"{totals['points']} new price points, {len(delivered)} offers recorded",
-            file=sys.stderr,
+            f"{totals['points']} new price points, {len(delivered)} offers recorded"
         )
+        print(line, file=sys.stderr)
+        return line
     except Exception as exc:
         log_failure("sync", exc)
+        return f"Supabase: ERROR al sincronizar ({str(exc)[:160]}). Los JSON no se ven afectados"
+
+
+def build_summary(
+    deals: list[Deal],
+    reports: list[StoreReport],
+    new_deals: int,
+    qualifying: list[ScoredDeal],
+    delivered: list[ScoredDeal],
+    unverified_discarded: int,
+    budget_used: int,
+    telegram_line: str,
+    supabase_line: str,
+    seconds: float,
+) -> str:
+    unverified = sum(1 for c in qualifying if not c.advertised_confirmed)
+    lines = [
+        "### ✅ Escaneo completado",
+        "",
+        f"- **Productos leídos:** {len(deals)} ({new_deals} nuevos)",
+        f"- **Ofertas calificadas:** {len(qualifying)} ({unverified} sin verificar; "
+        f"{unverified_discarded} descuentos descartados)",
+        f"- **Telegram:** {telegram_line}",
+        f"- **Cupo diario de no verificadas:** {budget_used}/{DAILY_UNVERIFIED_CAP}",
+        f"- **{supabase_line}**" if supabase_line.startswith("Supabase: ERROR") else f"- {supabase_line}",
+        f"- **Duración:** {seconds:.0f}s",
+        "",
+        "### Tiendas",
+        "",
+        to_markdown(reports),
+    ]
+    errors = collect_errors(reports, limit=10)
+    if errors:
+        lines += ["", "### Primeros errores", ""] + [f"- `{error}`" for error in errors]
+    return "\n".join(lines)
 
 
 def run() -> int:
     started = time.time()
+    clear_failure_reason()
     watchlist = load_watchlist()
 
     try:
-        deals = fetch_all_deals(watchlist)
+        deals, reports = scan_stores(watchlist)
     except Exception as exc:
-        print(f"Scraper failed: {exc}", file=sys.stderr)
-        return 1
+        return record_failure(f"Scraper failed: {exc}", getattr(exc, "reports", None))
+
+    print(format_log(reports), file=sys.stderr)
 
     history = load_price_history(HISTORY_PATH)
     seen_keys = load_seen(SEEN_PATH)
@@ -305,27 +447,38 @@ def run() -> int:
         delivered_keys.update(aliases.get(key, []))
     pending_keys = {deal_key(scored.deal) for scored in candidates} - delivered_keys
 
-    print(f"Deals per store: {_store_summary(deals, watchlist.get("disabled_stores"))}", file=sys.stderr)
+    # Was anything eligible to be sent at all? Verified offers always are; the
+    # unconfirmed ones only while the daily quota has room.
+    unverified_candidates = sum(1 for c in candidates if not c.advertised_confirmed)
+    attempted = any(c.advertised_confirmed for c in candidates) or unverified_room > 0
+    quota_limited = bool(candidates) and not attempted
+
+    print(f"Deals per store: {_store_summary(deals, watchlist.get('disabled_stores'))}", file=sys.stderr)
     print(
         f"Scanned {len(deals)} deals, {len(new_keys)} new, {len(candidates)} qualifying "
-        f"({sum(1 for c in candidates if not c.advertised_confirmed)} unverified), "
+        f"({unverified_candidates} unverified), "
         f"{unverified} advertised discounts discarded as unverified",
         file=sys.stderr,
     )
-    print(
-        f"Telegram: delivered {len(delivered)}/{len(candidates)} individual messages "
-        f"({len(pending_keys)} pending retry next run)",
-        file=sys.stderr,
-    )
+    if quota_limited:
+        telegram_line = (
+            f"nothing sent: {unverified_candidates} unverified candidates are waiting but the daily "
+            f"unverified quota is spent ({budget.get('unverified', 0)}/{DAILY_UNVERIFIED_CAP}) and "
+            f"there are no verified offers"
+        )
+    else:
+        telegram_line = (
+            f"delivered {len(delivered)}/{len(candidates)} individual messages "
+            f"({len(pending_keys)} pending retry next run)"
+        )
+    print(f"Telegram: {telegram_line}", file=sys.stderr)
 
     # Only a real delivery failure is an error: some offer was eligible to be sent
     # and none got through. Candidates that were never sendable (only unverified
     # ones while the daily/per-run quota is spent) are not a Telegram failure, and
     # returning here would skip saving history, the budget and the Supabase mirror.
-    attempted = any(c.advertised_confirmed for c in candidates) or unverified_room > 0
     if candidates and attempted and not delivered:
-        print("Notification failed: no offer could be delivered to Telegram", file=sys.stderr)
-        return 1
+        return record_failure("Notification failed: no offer could be delivered to Telegram", reports)
 
     # Only delivered offers are remembered: with thousands of products per scan,
     # recording every non-qualifying one would bloat the file for no benefit
@@ -337,7 +490,22 @@ def run() -> int:
         1 for scored in delivered if not scored.advertised_confirmed
     )
     save_budget(BUDGET_PATH, budget)
-    mirror_to_supabase(deals, delivered, len(candidates), len(new_keys), unverified, started)
+
+    quota = {
+        "unverified_room": unverified_room,
+        "eligible": attempted,
+        "delivered": len(delivered),
+        "quota_limited": quota_limited,
+    }
+    supabase_line = mirror_to_supabase(
+        deals, delivered, len(candidates), len(new_keys), unverified, started, reports=reports, quota=quota
+    )
+    write_step_summary(
+        build_summary(
+            deals, reports, len(new_keys), candidates, delivered, unverified,
+            budget.get("unverified", 0), telegram_line, supabase_line, time.time() - started,
+        )
+    )
     return 0
 
 
@@ -377,5 +545,16 @@ def selftest(limit: int = 3) -> int:
     return 0 if offers and len(delivered) == len(offers) else 1
 
 
+def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    try:
+        return selftest() if "--selftest" in argv else run()
+    except Exception as exc:
+        # Nothing handled it: leave the reason where the failure alert can read it,
+        # then let the traceback reach the log as usual.
+        record_failure(f"Excepción no controlada: {type(exc).__name__}: {exc}")
+        raise
+
+
 if __name__ == "__main__":
-    sys.exit(selftest() if "--selftest" in sys.argv[1:] else run())
+    sys.exit(main())

@@ -395,3 +395,15 @@ def send_offers(
             file=sys.stderr,
         )
     return delivered
+
+
+def send_alert(text: str, bot_token: str | None = None, chat_id: str | None = None) -> bool:
+    """Plain-text message to the main chat (store health, service notices).
+
+    No parse mode on purpose: the text may carry error messages with characters
+    that would otherwise need HTML escaping. Returns False instead of raising."""
+    bot_token = bot_token or os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = chat_id or os.environ.get("TELEGRAM_CHAT_ID")
+    if not bot_token or not chat_id:
+        return False
+    return _post(bot_token, "sendMessage", json={"chat_id": chat_id, "text": text[:4000]})

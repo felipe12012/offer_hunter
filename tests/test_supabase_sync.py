@@ -238,3 +238,24 @@ def test_import_history_counts_a_repeated_day_and_price_once(monkeypatch):
     points_call = rec.calls[1]
     assert len(points_call["body"]) == 2
     assert totals == {"products": 1, "points": 2}
+
+
+def test_recent_store_status_returns_newest_first_with_none_for_runs_without_data(monkeypatch):
+    def fake_get(url, headers=None, params=None, timeout=None):
+        assert url == f"{URL}/rest/v1/offer_scan_runs"
+        assert params["order"] == "started_at.desc" and params["limit"] == 2
+        return FakeResponse(200, [
+            {"store_status": {"hites": {"status": "failed", "deals": 0}, "vans": {"status": "ok", "deals": 5}}},
+            {"store_status": None},
+        ])
+    monkeypatch.setattr("supabase_sync.requests.get", fake_get)
+
+    result = SupabaseSync(URL, "k").recent_store_status(2)
+
+    assert result == [{"hites": "failed", "vans": "ok"}, None]
+
+
+def test_recent_store_status_raises_a_supabase_error_on_http_errors(monkeypatch):
+    monkeypatch.setattr("supabase_sync.requests.get", lambda *a, **k: FakeResponse(400, text="column does not exist"))
+    with pytest.raises(SupabaseError):
+        SupabaseSync(URL, "k").recent_store_status(2)

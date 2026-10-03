@@ -62,9 +62,13 @@ def _last_run(repo: str, token: str) -> dict | None:
     return runs[0] if runs else None
 
 
-def _supabase_runs(limit: int = 3) -> list[dict]:
-    """The per-store counts recorded by each scan, newest first. Empty when
-    Supabase is not configured or unreachable (the check is best-effort)."""
+def _supabase_runs(limit: int = 3) -> list[dict] | None:
+    """The per-store counts recorded by each scan, newest first.
+
+    ``[]`` when Supabase is not configured (the check is optional) and ``None``
+    when it is configured but the query failed, so the caller can say so instead
+    of silently skipping the check. (It used to select a ``created_at`` column
+    that does not exist; the error was swallowed and the store check never ran.)"""
     url = (os.environ.get("SUPABASE_URL") or "").rstrip("/")
     key = os.environ.get("SUPABASE_SERVICE_KEY") or ""
     if not url or not key:
@@ -76,13 +80,14 @@ def _supabase_runs(limit: int = 3) -> list[dict]:
         response = requests.get(
             f"{url}/rest/v1/offer_scan_runs",
             headers=headers,
-            params={"select": "created_at,per_store", "order": "created_at.desc", "limit": limit},
+            params={"select": "started_at,per_store", "order": "started_at.desc", "limit": limit},
             timeout=30,
         )
         response.raise_for_status()
         return response.json()
-    except (requests.RequestException, ValueError):
-        return []
+    except (requests.RequestException, ValueError) as exc:
+        print(f"watchdog: could not read offer_scan_runs from Supabase: {exc}", file=sys.stderr)
+        return None
 
 
 def _notify(text: str) -> None:
@@ -115,12 +120,13 @@ def main() -> int:
         problems.append(f"Sin escaneos en los ultimos {STALE_MINUTES} min (ultimo: {when}).")
 
     runs = _supabase_runs()
-    for store in dropped_stores(runs):
+    degraded = runs is None  # configured but unreadable: say so in the Actions run, not on Telegram
+    for store in dropped_stores(runs or []):
         problems.append(f"La tienda {store} bajo a 0 productos en el ultimo escaneo.")
 
     if not problems:
         print(f"watchdog: ok (last run {latest.get('created_at') if latest else 'n/a'})")
-        return 0
+        return 1 if degraded else 0
 
     message = "⚠️ cyberday-hunter vigilancia:\n- " + "\n- ".join(problems)
     try:
