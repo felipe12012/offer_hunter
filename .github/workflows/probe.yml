@@ -1,4 +1,4 @@
-name: Probe TusMascotas
+name: Probe Tus Mascotas
 
 on:
   workflow_dispatch: {}
@@ -28,9 +28,8 @@ jobs:
                   print(f"HOME {host} -> ERROR {type(e).__name__}")
               for label, path in (
                   ("vtex", "/api/catalog_system/pub/products/search?ft=alimento%20perro&_from=0&_to=2"),
-                  ("vtexio", "/api/io/_v/api/intelligent-search/product_search/alimento%20perro?count=3"),
                   ("shopify", "/products.json?limit=3"),
-                  ("sfcc", "/on/demandware.store/Sites-Ref-Path"),
+                  ("vtexio", "/api/io/_v/api/intelligent-search/product_search/alimento%20perro?count=3"),
               ):
                   for tool, getter in (("req", lambda u: requests.get(u, headers=UA, timeout=25)),
                                        ("curl", lambda u: creq.get(u, impersonate="chrome", timeout=25))):
@@ -48,11 +47,12 @@ jobs:
                       except Exception:
                           pass
           PY
-      - name: Browser search + structure
+      - name: Browser search render
         run: |
           pip install patchright
           patchright install chromium >/dev/null 2>&1 || true
           python - <<'PY'
+          import re
           from collections import Counter
           from patchright.sync_api import sync_playwright
           UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
@@ -69,21 +69,18 @@ jobs:
                       el = page.query_selector(sel)
                       if el:
                           el.fill("alimento perro"); used = sel; el.press("Enter"); break
-                  page.wait_for_timeout(8000)
-                  print("URL", page.url[:80], "title", page.title()[:50], "len", len(page.content()))
-                  print("input", used)
-                  priced = page.eval_on_selector_all("*", "els => els.filter(e => e.children.length===0 && /\\$\\s?\\d{1,3}(\\.\\d{3})+/.test(e.textContent||'')).slice(0,8).map(e => [e.tagName, e.className, (e.textContent||'').trim().slice(0,35)])")
-                  print("priced samples:", priced)
-                  classes = page.eval_on_selector_all("*", "els => els.map(e => e.className).filter(c => typeof c==='string' && /product|card|item|grid|price|precio/i.test(c))")
+                  page.wait_for_timeout(9000)
+                  print(f"SITE input={used} final={page.url[:75]} len={len(page.content())}")
+                  anchors = page.eval_on_selector_all("a[href]", "els => els.map(e => e.getAttribute('href')).filter(h => h && h.length>3)")
+                  prod = [h for h in anchors if re.search(r"(/p/|/product|/articulo|/pd/|-p-|/\d{6,}|/products/|/item|/producto)", h)]
+                  print(f"     anchors={len(anchors)} productish={len(prod)}")
+                  print("     sample:", list(dict.fromkeys(prod))[:8])
+                  classes = page.eval_on_selector_all("*", "els => els.map(e => e.className).filter(c => typeof c==='string' && /product|card|item|precio|price|grid/i.test(c))")
                   top = Counter()
                   for c in classes:
                       for token in str(c).split():
                           top[token] += 1
-                  print("candidate classes:", top.most_common(15))
-                  anchors = page.eval_on_selector_all("a[href]", "els => els.map(e => e.getAttribute('href')).filter(Boolean)")
-                  import re
-                  prod = [h for h in anchors if re.search(r"(/p/|/product|/articulo|/pd/|-p-|/products/|/\d{5,})", h)]
-                  print("productish hrefs:", prod[:6])
+                  print("     classes:", top.most_common(15))
               except Exception as e:
                   print(f"SITE -> ERROR {type(e).__name__}: {str(e)[:70]}")
               finally:
