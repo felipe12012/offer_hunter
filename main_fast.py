@@ -74,15 +74,41 @@ BROWSER_SHOE_STORES = {
     "nike", "converse", "puma", "newbalance", "fila", "skechers",
 }
 BROWSER_SHOE_KEYWORDS = ["zapatillas", "zapatilla"]
-BROWSER_BEAUTY_STORES = {"salcobrand", "cruzverde"}
-BROWSER_BEAUTY_KEYWORDS = ["crema", "crema facial", "protector solar", "kerastase", "redken", "perfume", "maquillaje"]
+# Pharmacies: dermocosmetics first (the priority), then other beauty. Kept to a
+# focused list because Salcobrand and Cruz Verde launch one browser per keyword;
+# Ahumada reads HTTP so it shares the same list cheaply.
+PHARMACY_STORES = {"salcobrand", "cruzverde", "ahumada"}
+PHARMACY_KEYWORDS = [
+    # dermocosmetics (priority)
+    "dermocosmetica",
+    "crema facial",
+    "facial",
+    "hidratante",
+    "protector solar",
+    "serum",
+    "agua micelar",
+    "acido hialuronico",
+    "vitamina c",
+    "retinol",
+    "la roche-posay",
+    "cerave",
+    "vichy",
+    "eucerin",
+    "avene",
+    "isdin",
+    # other beauty (not the only thing)
+    "kerastase",
+    "redken",
+    "perfume",
+    "maquillaje",
+]
 
 
 def watchlist_for(store: str, watchlist: dict) -> dict:
     if store in BROWSER_SHOE_STORES:
         return {**watchlist, "keywords": BROWSER_SHOE_KEYWORDS}
-    if store in BROWSER_BEAUTY_STORES:
-        return {**watchlist, "keywords": BROWSER_BEAUTY_KEYWORDS}
+    if store in PHARMACY_STORES:
+        return {**watchlist, "keywords": PHARMACY_KEYWORDS}
     return watchlist
 
 SEEN_PATH = Path(__file__).parent / "data" / "seen_items.json"

@@ -2,6 +2,7 @@
 import os
 import re
 import sys
+import time
 from datetime import datetime, timezone
 from urllib.parse import quote, urljoin
 
@@ -93,27 +94,37 @@ def parse_html(html: str, category: str) -> list[Deal]:
 
 def fetch_html(keyword: str) -> str:
     url = SEARCH_URL.format(query=quote(keyword))
-    with sync_playwright() as p:
-        proxy = os.environ.get("SCRAPER_PROXY")
-        browser = p.chromium.launch(
-            headless=True, proxy={"server": proxy} if proxy else None
-        )
-        context = browser.new_context(
-            user_agent=USER_AGENT,
-            viewport={"width": 1366, "height": 768},
-            locale="es-CL",
-            timezone_id="America/Santiago",
-        )
-        page = context.new_page()
-        page.goto(url, timeout=30000, wait_until="domcontentloaded")
+    last_error: Exception | None = None
+    # Skechers is slow to hand over the DOM and intermittently stalls past 30s
+    # from CI; retry once with a longer timeout rather than losing the whole
+    # store for the run.
+    for attempt in range(2):
         try:
-            page.wait_for_selector(CARD_SELECTOR, timeout=15000)
-        except Exception:
-            pass
-        scroll_to_load(page)
-        html = page.content()
-        browser.close()
-    return html
+            with sync_playwright() as p:
+                proxy = os.environ.get("SCRAPER_PROXY")
+                browser = p.chromium.launch(
+                    headless=True, proxy={"server": proxy} if proxy else None
+                )
+                context = browser.new_context(
+                    user_agent=USER_AGENT,
+                    viewport={"width": 1366, "height": 768},
+                    locale="es-CL",
+                    timezone_id="America/Santiago",
+                )
+                page = context.new_page()
+                page.goto(url, timeout=60000, wait_until="domcontentloaded")
+                try:
+                    page.wait_for_selector(CARD_SELECTOR, timeout=20000)
+                except Exception:
+                    pass
+                scroll_to_load(page)
+                html = page.content()
+                browser.close()
+            return html
+        except Exception as exc:  # noqa: BLE001 - retried, then surfaced
+            last_error = exc
+            time.sleep(2 + attempt)
+    raise RuntimeError(f"GET {url} failed after 2 attempts: {last_error}")
 
 
 def fetch_deals(watchlist: dict) -> list[Deal]:

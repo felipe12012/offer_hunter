@@ -12,12 +12,13 @@ def test_browser_shoe_stores_get_only_footwear_keywords():
     assert narrowed["keywords"] == ["zapatillas", "zapatilla"]
 
 
-def test_browser_beauty_stores_get_only_beauty_keywords():
+def test_pharmacies_get_the_dermocosmetics_first_keyword_list():
     watchlist = {"keywords": ["zapatillas", "kerastase", "crema facial", "notebook"]}
 
-    narrowed = main_fast.watchlist_for("salcobrand", watchlist)
-
-    assert narrowed["keywords"] == main_fast.BROWSER_BEAUTY_KEYWORDS
+    for store in ("salcobrand", "cruzverde", "ahumada"):
+        narrowed = main_fast.watchlist_for(store, watchlist)
+        assert narrowed["keywords"] == main_fast.PHARMACY_KEYWORDS
+        assert narrowed["keywords"][0] == "dermocosmetica"
 
 
 def test_non_shoe_stores_keep_the_full_watchlist():
@@ -25,5 +26,3 @@ def test_non_shoe_stores_keep_the_full_watchlist():
 
     assert main_fast.watchlist_for("falabella", watchlist) is watchlist
     assert main_fast.watchlist_for("sodimac", watchlist) is watchlist
-    # Ahumada reads plain HTTP, so it is cheap enough to take the full list.
-    assert main_fast.watchlist_for("ahumada", watchlist) is watchlist
