@@ -26,10 +26,9 @@ jobs:
               home = requests.get(base + "/", headers=UA, timeout=25).text
               sites = sorted(set(re.findall(r"Sites-([A-Za-z0-9_-]+)-Site", home)))
               print(f"SITE {name} base={base} site_ids={sites[:5]}")
-              candidates = sites + ["%s-Site" % name.split("/")[0], name.split("/")[-1] + "-Site"]
-              for sid in dict.fromkeys(candidates):
+              for sid in sites:
                   for locale in ("es_CL", "es-CL", "default"):
-                      url = f"{base}/on/demandware.store/Sites-{sid}/{locale}/Search-UpdateGrid?q=polera&start=0&sz=48"
+                      url = f"{base}/on/demandware.store/Sites-{sid}-Site/{locale}/Search-UpdateGrid?q=polera&start=0&sz=48"
                       try:
                           r = requests.get(url, headers=UA, timeout=25)
                       except Exception as e:
