@@ -1,4 +1,4 @@
-name: Probe Pharmacies
+name: Probe Pharmacies Browser
 
 on:
   workflow_dispatch: {}
@@ -6,52 +6,71 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Probe
+      - name: Search-render probe
         run: |
-          pip install requests curl_cffi
+          pip install patchright
+          patchright install chromium >/dev/null 2>&1 || true
           python - <<'PY'
-          import requests
-          from curl_cffi import requests as creq
+          from patchright.sync_api import sync_playwright
 
-          UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36", "Accept-Language": "es-CL,es;q=0.9"}
+          UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
           SITES = {
-              "salcobrand": ("https://salcobrand.cl", "https://www.salcobrand.cl"),
-              "cruzverde": ("https://cruzverde.cl", "https://www.cruzverde.cl"),
-              "ahumada": ("https://farmaciasahumada.cl", "https://www.farmaciasahumada.cl"),
+              "salcobrand": "https://salcobrand.cl/",
+              "cruzverde": "https://www.cruzverde.cl/",
+              "ahumada": "https://www.farmaciasahumada.cl/",
           }
+          SEARCH_INPUTS = [
+              "input[type='search']",
+              "input[name='q']",
+              "input[name='search']",
+              "input[placeholder*='usca']",
+              "input[placeholder*='Busca']",
+              "input[aria-label*='usca']",
+          ]
 
-          for name, (apex, www) in SITES.items():
-              for host in (www, apex):
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
+              for name, home in SITES.items():
+                  ctx = browser.new_context(user_agent=UA, viewport={"width": 1366, "height": 900}, locale="es-CL", timezone_id="America/Santiago")
+                  page = ctx.new_page()
                   try:
-                      r = requests.get(host, headers=UA, timeout=25, allow_redirects=True)
-                      low = r.text.lower()
-                      markers = [m for m in ("vtex", "shopify", "magento", "__next_data__", "demandware", "cloudflare", "just a moment", "captcha") if m in low]
-                      print(f"HOME {host} -> {r.status_code} final={r.url[:55]} len={len(r.text)} markers={markers}")
+                      page.goto(home, wait_until="domcontentloaded", timeout=45000)
+                      page.wait_for_timeout(4000)
+                      used = None
+                      for sel in SEARCH_INPUTS:
+                          el = page.query_selector(sel)
+                          if el:
+                              el.fill("crema")
+                              used = sel
+                              el.press("Enter")
+                              break
+                      if used is None:
+                          # fall back to common search URLs
+                          for url in (home + "search?q=crema", home + "buscar?q=crema"):
+                              try:
+                                  page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                                  break
+                              except Exception:
+                                  pass
+                      page.wait_for_timeout(9000)
+                      final = page.url
+                      links = page.eval_on_selector_all("a[href]", "els => els.map(e => [e.href, (e.innerText||'').trim()]).filter(x => x[1] && x[1].length > 12)")
+                      # product-ish links: contain /p, /product, /articulo, or end in digits
+                      import re
+                      prod = [l for l in links if re.search(r"(/p/|/product|/articulo|/pd/|-p-|/\d{6,})", l[0])]
+                      print(f"SITE {name} input={used} final={final[:80]}")
+                      print(f"     links={len(links)} productish={len(prod)}")
+                      for href, text in prod[:4]:
+                          print(f"       {text[:45]!r} {href[:70]}")
                   except Exception as e:
-                      print(f"HOME {host} -> ERROR {type(e).__name__}")
-
-                  apis = [
-                      ("vtex", f"{host}/api/catalog_system/pub/products/search?ft=crema&_from=0&_to=2"),
-                      ("vtexio", f"{host}/api/io/_v/api/intelligent-search/product_search/crema?count=3"),
-                  ]
-                  for label, url in apis:
-                      for tool, getter in (("req", lambda u: requests.get(u, headers=UA, timeout=25)),
-                                           ("curl", lambda u: creq.get(u, impersonate="chrome", timeout=25))):
-                          try:
-                              rr = getter(url)
-                              n = ""
-                              if rr.status_code == 200:
-                                  try:
-                                      data = rr.json()
-                                      n = f" n={len(data)}" if isinstance(data, list) else " non-list"
-                                  except Exception:
-                                      n = " non-json"
-                              print(f"  {name} {label} [{tool}] -> {rr.status_code}{n} len={len(rr.text)}")
-                          except Exception as e:
-                              print(f"  {name} {label} [{tool}] -> ERROR {type(e).__name__}")
+                      print(f"SITE {name} -> ERROR {type(e).__name__}: {str(e)[:70]}")
+                  finally:
+                      ctx.close()
+              browser.close()
           PY
