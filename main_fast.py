@@ -15,9 +15,11 @@ from models import Deal, ScoredDeal
 from notifier import send_offers
 from price_history import load_price_history, save_price_history, update_price_history
 from supabase_sync import SupabaseSync, log_failure
+from sources.ahumada import fetch_deals as fetch_ahumada_deals
 from sources.asics import fetch_deals as fetch_asics_deals
 from sources.converse import fetch_deals as fetch_converse_deals
 from sources.crocs import fetch_deals as fetch_crocs_deals
+from sources.cruzverde import fetch_deals as fetch_cruzverde_deals
 from sources.falabella import fetch_deals as fetch_falabella_deals
 from sources.fila import fetch_deals as fetch_fila_deals
 from sources.hites import fetch_deals as fetch_hites_deals
@@ -29,6 +31,7 @@ from sources.paris import fetch_deals as fetch_paris_deals
 from sources.puma import fetch_deals as fetch_puma_deals
 from sources.reebok import fetch_deals as fetch_reebok_deals
 from sources.ripley import fetch_deals as fetch_ripley_deals
+from sources.salcobrand import fetch_deals as fetch_salcobrand_deals
 from sources.salomon import fetch_deals as fetch_salomon_deals
 from sources.skechers import fetch_deals as fetch_skechers_deals
 from sources.sodimac import fetch_deals as fetch_sodimac_deals
@@ -58,21 +61,28 @@ SOURCE_FETCHERS = [
     ("newbalance", "fetch_newbalance_deals"),
     ("fila", "fetch_fila_deals"),
     ("skechers", "fetch_skechers_deals"),
+    ("salcobrand", "fetch_salcobrand_deals"),
+    ("cruzverde", "fetch_cruzverde_deals"),
+    ("ahumada", "fetch_ahumada_deals"),
 ]
 SOURCE_NAMES = [attr for _store, attr in SOURCE_FETCHERS]
 
-# Brand stores that need a browser and launch one Chromium per keyword. Handed
-# the full 31-keyword watchlist they would pay ~30 browser launches each, so
-# they get only footwear queries; the store's own catalogue is all shoes anyway.
+# Stores that need a browser and launch one Chromium per keyword. Handed the
+# full 31-keyword watchlist they would pay ~30 browser launches each, so they
+# get only the queries that match what they sell.
 BROWSER_SHOE_STORES = {
     "nike", "converse", "puma", "newbalance", "fila", "skechers",
 }
 BROWSER_SHOE_KEYWORDS = ["zapatillas", "zapatilla"]
+BROWSER_BEAUTY_STORES = {"salcobrand", "cruzverde"}
+BROWSER_BEAUTY_KEYWORDS = ["crema", "crema facial", "protector solar", "kerastase", "redken", "perfume", "maquillaje"]
 
 
 def watchlist_for(store: str, watchlist: dict) -> dict:
     if store in BROWSER_SHOE_STORES:
         return {**watchlist, "keywords": BROWSER_SHOE_KEYWORDS}
+    if store in BROWSER_BEAUTY_STORES:
+        return {**watchlist, "keywords": BROWSER_BEAUTY_KEYWORDS}
     return watchlist
 
 SEEN_PATH = Path(__file__).parent / "data" / "seen_items.json"
