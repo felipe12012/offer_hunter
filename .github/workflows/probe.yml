@@ -1,0 +1,59 @@
+name: Probe Kerastase
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: curl_cffi
+        run: |
+          pip install curl_cffi
+          python - <<'PY'
+          from curl_cffi import requests as creq
+          for url in ("https://www.kerastase.cl/", "https://www.kerastase.cl/search?q=shampoo"):
+              try:
+                  r = creq.get(url, impersonate="chrome", timeout=40)
+                  body = r.text.lower()
+                  print(f"CURL {url} -> {r.status_code} len={len(r.text)} markers={[m for m in ('demandware','salesforce','shopify','vtex','__next_data__','just a moment','cloudflare') if m in body]}")
+              except Exception as e:
+                  print(f"CURL {url} -> ERROR {type(e).__name__}")
+          PY
+      - name: patchright
+        run: |
+          pip install patchright
+          patchright install chromium >/dev/null 2>&1 || true
+          python - <<'PY'
+          from patchright.sync_api import sync_playwright
+
+          UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+          URLS = [
+              "https://www.kerastase.cl/",
+              "https://www.kerastase.cl/search?q=shampoo",
+              "https://www.kerastase.cl/es/search?q=shampoo",
+          ]
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
+              for url in URLS:
+                  ctx = browser.new_context(user_agent=UA, viewport={"width": 1366, "height": 768}, locale="es-CL", timezone_id="America/Santiago")
+                  page = ctx.new_page()
+                  try:
+                      resp = page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                      page.wait_for_timeout(7000)
+                      html = page.content()
+                      low = html.lower()
+                      platform = [m for m in ("demandware", "salesforce", "shopify", "vtex", "__next_data__") if m in low]
+                      prices = low.count("$") + low.count("clp")
+                      print(f"PATCH {url} -> status={resp.status if resp else None} title={page.title()[:50]!r} len={len(html)} platform={platform} $orCLP={prices}")
+                  except Exception as e:
+                      print(f"PATCH {url} -> ERROR {type(e).__name__}: {str(e)[:60]}")
+                  finally:
+                      ctx.close()
+              browser.close()
+          PY
