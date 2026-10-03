@@ -223,3 +223,18 @@ def test_count_reads_the_exact_row_count_from_content_range(monkeypatch):
         return FakeResponse(200, [], headers={"Content-Range": "0-0/43039"})
     monkeypatch.setattr("supabase_sync.requests.get", fake_get)
     assert SupabaseSync(URL, "k").count("offer_products") == 43039
+
+
+def test_import_history_counts_a_repeated_day_and_price_once(monkeypatch):
+    rec = Recorder()
+    history = {"falabella:1": [
+        {"date": "2026-10-02", "price": 100},
+        {"date": "2026-10-02", "price": 90},
+        {"date": "2026-10-02", "price": 100},   # back to 100 the same day: same row as the first
+    ]}
+
+    totals = client(monkeypatch, rec).import_history(history)
+
+    points_call = rec.calls[1]
+    assert len(points_call["body"]) == 2
+    assert totals == {"products": 1, "points": 2}

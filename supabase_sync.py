@@ -145,6 +145,7 @@ class SupabaseSync:
     def import_history(self, history: dict) -> dict:
         products = []
         points = []
+        seen_points: set[tuple[str, str, int]] = set()
         for product_id, snapshots in history.items():
             if not snapshots:
                 continue
@@ -153,6 +154,12 @@ class SupabaseSync:
                 {"id": product_id, "store": product_id.split(":", 1)[0], "price": latest, "list_price": latest}
             )
             for snapshot in snapshots:
+                # The table is unique on (product, day, price): a price that goes
+                # 100 -> 90 -> 100 within one day is a single stored point.
+                point_key = (product_id, snapshot["date"], snapshot["price"])
+                if point_key in seen_points:
+                    continue
+                seen_points.add(point_key)
                 points.append(
                     {
                         "product_id": product_id,
