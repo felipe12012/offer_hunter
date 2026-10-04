@@ -352,8 +352,12 @@ def send_offers(
     alert_thread_id: str | int | None = None,
     max_unverified: int | None = None,
     max_priority_unverified: int | None = None,
+    public_chat_id: str | None = None,
 ) -> list[ScoredDeal]:
     """Send each offer as its own Telegram message (photo + caption + link button).
+
+    ``public_chat_id`` (or TELEGRAM_PUBLIC_CHAT_ID) is a channel that receives a copy of every
+    delivered offer, so anyone can follow it without being registered in the bot.
 
     Offers at or above ``alerts["alert_chat_min_pct"]`` go to the alert chat when
     one is configured (argument or TELEGRAM_ALERT_CHAT_ID); everything else, and
@@ -378,6 +382,7 @@ def send_offers(
     raw_thread = alert_thread_id or os.environ.get("TELEGRAM_ALERT_THREAD_ID") or None
     thread_id = int(raw_thread) if raw_thread else None
     alert_min = _alerts(alerts)["alert_chat_min_pct"]
+    public_chat_id = public_chat_id or os.environ.get("TELEGRAM_PUBLIC_CHAT_ID") or None
 
     verified = [scored for scored in scored_deals if scored.advertised_confirmed]
     priority_unverified = [s for s in scored_deals if not s.advertised_confirmed and s.priority]
@@ -412,12 +417,22 @@ def send_offers(
             time.sleep(SEND_DELAY_SECONDS)
 
         result = ""
+        sent_to = chat_id
         if alert_chat_id and _rank_key(scored) >= alert_min:
             result = _send_one(scored, bot_token, alert_chat_id, alerts, thread_id, allow_silent=False)
-            if not result:
+            if result:
+                sent_to = alert_chat_id
+            else:
                 print(f"Alert chat failed for {scored.deal.id}; falling back to the main chat", file=sys.stderr)
         if not result:
             result = _send_one(scored, bot_token, chat_id, alerts)
+
+        # The public channel gets a copy of everything the owner received. Its failures never
+        # count against the offer: delivery to the owner is what marks it as seen.
+        if result and public_chat_id and str(public_chat_id) != str(sent_to):
+            time.sleep(SEND_DELAY_SECONDS)
+            if not _send_one(scored, bot_token, public_chat_id, alerts):
+                print(f"Public channel failed for {scored.deal.id}", file=sys.stderr)
 
         if result:
             delivered.append(scored)

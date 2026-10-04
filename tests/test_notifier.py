@@ -70,7 +70,7 @@ class Recorder:
 
 
 def install(monkeypatch, recorder, get=None):
-    for name in ("TELEGRAM_ALERT_CHAT_ID", "TELEGRAM_ALERT_THREAD_ID"):
+    for name in ("TELEGRAM_ALERT_CHAT_ID", "TELEGRAM_ALERT_THREAD_ID", "TELEGRAM_PUBLIC_CHAT_ID"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr("notifier.requests.post", recorder)
     monkeypatch.setattr("notifier.requests.get", get or (lambda url, **kw: FakeResponse(200)))
@@ -453,6 +453,52 @@ def test_everything_goes_to_the_main_chat_when_no_alert_chat_is_configured(monke
     send_offers([make_scored("sodimac:big", **BIG), make_scored("sodimac:small", **SMALL)],
                 bot_token="tok", chat_id="MAIN")
     assert set(_by_chat(rec)) == {"MAIN"}
+
+
+def test_public_channel_gets_a_copy_of_every_delivered_offer(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    offers = [make_scored("sodimac:big", **BIG), make_scored("sodimac:small", **SMALL)]
+
+    sent = send_offers(offers, bot_token="tok", chat_id="MAIN", alert_chat_id="ALERT", public_chat_id="PUBLIC")
+
+    assert len(sent) == 2
+    chats = _by_chat(rec)
+    assert len(chats["PUBLIC"]) == 2
+    assert len(chats["ALERT"]) == 1 and len(chats["MAIN"]) == 1
+
+
+def test_public_channel_is_not_sent_the_same_offer_twice_when_it_is_the_alert_chat(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    send_offers([make_scored("sodimac:big", **BIG)], bot_token="tok", chat_id="MAIN",
+                alert_chat_id="SAME", public_chat_id="SAME")
+    assert len(_by_chat(rec)["SAME"]) == 1
+
+
+def test_public_channel_failure_does_not_lose_the_offer(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    original = rec.__call__
+
+    def fail_public(url, json=None, data=None, files=None, timeout=None):
+        if json and json.get("chat_id") == "PUBLIC":
+            rec.calls.append((url.rsplit("/", 1)[-1], json, files))
+            return FakeResponse(400)
+        return original(url, json=json, data=data, files=files, timeout=timeout)
+
+    monkeypatch.setattr("notifier.requests.post", fail_public)
+    sent = send_offers([make_scored("sodimac:small", **SMALL)], bot_token="tok", chat_id="MAIN",
+                       public_chat_id="PUBLIC")
+    assert len(sent) == 1
+
+
+def test_public_channel_can_come_from_the_environment(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    monkeypatch.setenv("TELEGRAM_PUBLIC_CHAT_ID", "@canal")
+    send_offers([make_scored("sodimac:small", **SMALL)], bot_token="tok", chat_id="MAIN")
+    assert set(_by_chat(rec)) == {"MAIN", "@canal"}
 
 
 def test_alert_chat_can_come_from_the_environment(monkeypatch):

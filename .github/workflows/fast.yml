@@ -79,6 +79,8 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           TELEGRAM_ALERT_CHAT_ID: ${{ secrets.TELEGRAM_ALERT_CHAT_ID }}
           TELEGRAM_ALERT_THREAD_ID: ${{ secrets.TELEGRAM_ALERT_THREAD_ID }}
+          # Optional public channel: gets a copy of every delivered offer.
+          TELEGRAM_PUBLIC_CHAT_ID: ${{ secrets.TELEGRAM_PUBLIC_CHAT_ID }}
           # Optional. Paris, Ripley and Tottus block GitHub's datacenter IPs with
           # a WAF/CloudFront 403, so they only scrape when the browser is routed
           # through a clean (ideally Chilean residential) proxy. Format:
