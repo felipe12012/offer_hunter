@@ -107,6 +107,7 @@ def test_sync_scan_payload_carries_every_field_the_sql_function_reads(monkeypatc
         "id": "sodimac:9", "store": "sodimac", "title": "Taladro", "url": "https://shop/sodimac:9",
         "image_url": "https://img/x.jpg", "category": "herramientas",
         "price": 500, "list_price": 1000, "discount_pct": 50.0,
+        "grp": "herramientas", "subcat": "electricas",
     }
 
 

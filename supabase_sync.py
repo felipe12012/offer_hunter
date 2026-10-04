@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 import requests
 
 from models import Deal, ScoredDeal
+from taxonomy import classify
 
 BATCH_SIZE = 1000
 POINT_BATCH_SIZE = 2000
@@ -31,6 +32,7 @@ class SupabaseError(RuntimeError):
 
 
 def _deal_row(deal: Deal) -> dict:
+    group, subcategory = classify(deal.title, deal.category, deal.store)
     return {
         "id": deal.id,
         "store": deal.store,
@@ -41,6 +43,8 @@ def _deal_row(deal: Deal) -> dict:
         "price": deal.price,
         "list_price": deal.list_price,
         "discount_pct": deal.discount_pct,
+        "grp": group,
+        "subcat": subcategory,
     }
 
 
