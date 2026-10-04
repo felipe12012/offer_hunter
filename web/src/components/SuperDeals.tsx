@@ -12,7 +12,7 @@ export function SuperDeals({ rows }: { rows: FeedRow[] }) {
       </h2>
       <div className="rail border-l border-t border-line">
         {rows.map((row, index) => (
-          <DealCard key={row.id} row={row} priority={index < 3} />
+          <DealCard key={row.id} row={row} priority={index < 2} />
         ))}
       </div>
     </section>

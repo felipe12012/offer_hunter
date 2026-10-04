@@ -21,7 +21,7 @@ export function SortBar({ filters }: { filters: Filters }) {
             key={option.value}
             href={filtersHref(filters, { sort: option.value })}
             aria-current={active ? "true" : undefined}
-            className={`px-2.5 py-1.5 text-sm ${active ? "bg-ink font-semibold text-paper" : "text-muted hover:text-ink hover:underline"}`}
+            className={`inline-flex min-h-11 items-center px-2.5 text-sm ${active ? "bg-ink font-semibold text-paper" : "text-muted hover:text-ink hover:underline"}`}
           >
             {option.label}
           </Link>

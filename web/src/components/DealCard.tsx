@@ -25,6 +25,7 @@ export function DealCard({ row, priority = false }: { row: FeedRow; priority?: b
           src={row.image_url}
           alt=""
           loading={priority ? "eager" : "lazy"}
+          fetchPriority={priority ? "high" : "auto"}
           decoding="async"
           referrerPolicy="no-referrer"
           width={300}
@@ -74,11 +75,12 @@ export function DealCard({ row, priority = false }: { row: FeedRow; priority?: b
   );
 }
 
-export function DealGrid({ rows }: { rows: FeedRow[] }) {
+/** `eager`: cuántas fotos cargan de inmediato (las que se ven sin hacer scroll). */
+export function DealGrid({ rows, eager = 4 }: { rows: FeedRow[]; eager?: number }) {
   return (
     <div className="grid grid-cols-2 border-l border-t border-line md:grid-cols-3 xl:grid-cols-4">
       {rows.map((row, index) => (
-        <DealCard key={row.id} row={row} priority={index < 4} />
+        <DealCard key={row.id} row={row} priority={index < eager} />
       ))}
     </div>
   );

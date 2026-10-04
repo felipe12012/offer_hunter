@@ -47,7 +47,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
             registramos. Actualizado {agoFrom(stats.last_seen)}.
           </p>
           {verifiedShare < 0.05 ? (
-            <p className="mt-4 border-l-4 border-verified bg-verified-bg px-4 py-3 text-[0.95rem]">
+            <p className="mt-4 border border-verified bg-verified-bg px-4 py-3 text-[0.95rem]">
               Estamos construyendo el historial de precios, por eso aún son pocos los productos verificados. Los que llevan
               el sello <strong>✓ Verificada</strong> están comprobados; en el resto, el descuento es el que anuncia la
               tienda.{" "}
@@ -78,7 +78,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
           {feed.rows.length > 0 ? (
             <>
-              <DealGrid rows={feed.rows} />
+              <DealGrid rows={feed.rows} eager={superDeals.length > 0 ? 0 : 4} />
               <Pagination filters={filters} total={feed.total} />
             </>
           ) : (

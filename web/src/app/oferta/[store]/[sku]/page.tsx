@@ -83,7 +83,7 @@ export default async function ProductPage({ params }: { params: Params }) {
           {hasList ? <p className="mt-2 text-lg">Ahorras {clp(row.saving)}</p> : null}
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <VerifiedStamp verified={view.verified} />
+            <VerifiedStamp verified={view.verified} showUnverified />
             <span className="text-sm text-muted">Actualizado {agoFrom(row.last_seen_at)}</span>
           </div>
 
@@ -107,7 +107,7 @@ export default async function ProductPage({ params }: { params: Params }) {
               {reasons.map((reason) => (
                 <li
                   key={reason.text}
-                  className={`border-l-4 px-3 py-2 text-[0.95rem] ${
+                  className={`border px-3 py-2 text-[0.95rem] ${
                     reason.tone === "ok"
                       ? "border-verified bg-verified-bg"
                       : reason.tone === "warn"
@@ -135,7 +135,7 @@ export default async function ProductPage({ params }: { params: Params }) {
           <h2 id="titulo-relacionados" className="mb-3 font-display text-2xl font-semibold">
             Más de {groupName(row.category_group)}
           </h2>
-          <DealGrid rows={related} />
+          <DealGrid rows={related} eager={0} />
         </section>
       ) : null}
     </main>

@@ -30,7 +30,10 @@ export function DiscountTag({
   );
 }
 
-export function VerifiedStamp({ verified }: { verified: boolean }) {
+/** En las tarjetas solo se sella lo verificado: "Sin verificar" en casi todas era ruido y tapaba el sello que importa
+ *  (la etiqueta gris "anuncia" ya dice que el descuento es de la tienda). En la ficha sí se explica (`showUnverified`). */
+export function VerifiedStamp({ verified, showUnverified = false }: { verified: boolean; showUnverified?: boolean }) {
+  if (!verified && !showUnverified) return null;
   return verified ? (
     <span className="stamp" title="El descuento está respaldado por el historial de precios que registramos">
       <span aria-hidden="true">✓</span> Verificada

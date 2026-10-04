@@ -16,6 +16,9 @@
   --claim-bg: #e7eaf0;
   --focus: #1d4ed8;
   --photo: #ffffff;
+  /* texto sobre las etiquetas de color; en oscuro el verde es claro y necesita tinta oscura */
+  --on-tag: #ffffff;
+  --on-verified: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -34,6 +37,7 @@
     --focus: #7aa2ff;
     /* las fotos de producto vienen con fondo blanco: se dejan sobre blanco */
     --photo: #ffffff;
+    --on-verified: #062a24;
   }
 }
 
@@ -78,9 +82,9 @@ body {
   align-items: baseline;
   gap: 0.3rem;
   padding: 0.28rem 0.7rem 0.28rem 1.15rem;
-  color: #fff;
+  color: var(--on-tag);
   background-color: var(--tag-bg);
-  background-image: radial-gradient(circle at 0.62rem 50%, var(--surface) 0.18rem, transparent 0.2rem);
+  background-image: radial-gradient(circle at 0.62rem 50%, var(--photo) 0.18rem, transparent 0.2rem);
   clip-path: polygon(0.7rem 0, 100% 0, 100% 100%, 0.7rem 100%, 0 50%);
   font-family: var(--font-display);
   font-weight: 700;
@@ -92,7 +96,10 @@ body {
 .tag--gran { --tag-bg: var(--tier-gran); }
 .tag--ofertaza { --tag-bg: var(--tier-ofertaza); }
 .tag--super { --tag-bg: var(--tier-super); }
-.tag--ok { --tag-bg: var(--verified); }
+.tag--ok {
+  --tag-bg: var(--verified);
+  color: var(--on-verified);
+}
 .tag--claim {
   --tag-bg: var(--claim-bg);
   color: var(--ink);
@@ -162,13 +169,10 @@ body {
   animation: sheen 1.4s linear infinite;
 }
 
+/* Sin movimiento el esqueleto queda como un bloque quieto: sigue indicando que se está cargando. */
 @media (prefers-reduced-motion: reduce) {
   .skeleton {
     animation: none;
-  }
-  * {
-    scroll-behavior: auto !important;
-    transition: none !important;
   }
 }
 

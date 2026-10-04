@@ -20,7 +20,7 @@ function Choice({ href, active, children, count }: { href: string; active: boole
     <Link
       href={href}
       aria-current={active ? "true" : undefined}
-      className={`flex items-center justify-between gap-2 px-2 py-1.5 text-[0.95rem] ${
+      className={`flex min-h-11 items-center justify-between gap-2 px-2 text-[0.95rem] ${
         active ? "bg-ink font-semibold text-paper" : "hover:bg-claim-bg"
       }`}
     >
@@ -65,8 +65,8 @@ function FilterBody({ filters, stats }: { filters: Filters; stats: FeedStats }) 
               <Link
                 key={value}
                 href={filtersHref(filters, { min: active ? null : value })}
-                aria-pressed={active}
-                className={`border px-3 py-1.5 font-display text-lg font-semibold leading-none ${
+                aria-current={active ? "true" : undefined}
+                className={`inline-flex min-h-11 items-center border px-3 font-display text-lg font-semibold leading-none ${
                   active ? "border-ink bg-ink text-paper" : "border-line bg-surface hover:border-ink"
                 }`}
               >
@@ -80,9 +80,7 @@ function FilterBody({ filters, stats }: { filters: Filters; stats: FeedStats }) 
       <Section title="Verificación">
         <Link
           href={filtersHref(filters, { ver: !filters.ver })}
-          role="checkbox"
-          aria-checked={filters.ver}
-          className="flex items-start gap-3 py-1"
+          className="flex min-h-11 items-start gap-3 py-1"
         >
           <span
             aria-hidden="true"
@@ -90,10 +88,15 @@ function FilterBody({ filters, stats }: { filters: Filters; stats: FeedStats }) 
               filters.ver ? "border-verified bg-verified text-paper" : "border-ink"
             }`}
           >
-            {filters.ver ? "✓" : ""}
+            {filters.ver ? (
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M3 8.5l3.2 3L13 4.5" />
+              </svg>
+            ) : null}
           </span>
           <span className="text-[0.95rem]">
             Solo con descuento verificado
+            <span className="sr-only">{filters.ver ? ": activado" : ": desactivado"}</span>
             <span className="block text-sm text-muted">
               {stats.verified.toLocaleString("es-CL")} productos
             </span>

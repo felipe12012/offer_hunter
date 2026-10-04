@@ -15,11 +15,11 @@ export default function HowWeVerify() {
 
       <h2 className="mt-10 font-display text-2xl font-semibold">Cuándo un descuento lleva el sello ✓ Verificada</h2>
       <ul className="mt-3 flex flex-col gap-3 leading-relaxed">
-        <li className="border-l-4 border-verified bg-verified-bg px-4 py-3">
+        <li className="border border-verified bg-verified-bg px-4 py-3">
           <strong>El precio normal es real.</strong> Registramos el producto a un precio cercano al “normal” que muestra
           la tienda (a menos de un 5 % de diferencia). Si lo vimos a ese precio, el ahorro es cierto.
         </li>
-        <li className="border-l-4 border-verified bg-verified-bg px-4 py-3">
+        <li className="border border-verified bg-verified-bg px-4 py-3">
           <strong>Bajó contra su propio historial.</strong> El precio actual está al menos 10 % por debajo del más bajo
           que habíamos visto antes.
         </li>
