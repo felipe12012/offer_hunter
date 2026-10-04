@@ -49,6 +49,11 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
             {stats.total.toLocaleString("es-CL")} productos en {storeCount} tiendas ·{" "}
             {stats.verified.toLocaleString("es-CL")} con descuento verificado · actualizado {agoFrom(stats.last_seen)}
           </p>
+          <p className="mt-3">
+            <Link href="/cyber" className="inline-flex min-h-11 items-center font-semibold text-verified underline underline-offset-4">
+              Cyber: posibles errores de precio y mayores descuentos →
+            </Link>
+          </p>
           {verifiedShare < 0.05 ? (
             <p className="mt-4 hidden border border-verified bg-verified-bg px-4 py-3 text-[0.95rem] sm:block">
               Estamos construyendo el historial de precios, por eso aún son pocos los productos verificados. Los que llevan

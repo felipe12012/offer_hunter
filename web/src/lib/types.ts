@@ -42,3 +42,19 @@ export type FeedStats = {
   /** categoría → subcategoría → cantidad */
   subs?: Record<string, Record<string, number>>;
 };
+
+/** Un posible error de precio anunciado (fila de offer_sent con price_error). */
+export type Mistake = {
+  product_id: string;
+  price: number;
+  price_error: string;
+  sent_at: string;
+};
+
+export type MistakeItem = {
+  mistake: Mistake;
+  /** El producto hoy en el catálogo; null si ya no se ve. */
+  row: FeedRow | null;
+  /** Sigue a ese mismo precio y a la venta. */
+  stillValid: boolean;
+};

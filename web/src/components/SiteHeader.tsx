@@ -30,7 +30,10 @@ export function SiteHeader({ q = "" }: { q?: string }) {
           </button>
         </form>
 
-        <nav aria-label="Principal" className="hidden shrink-0 md:block">
+        <nav aria-label="Principal" className="hidden shrink-0 items-center gap-5 md:flex">
+          <Link href="/cyber" className="font-semibold text-verified underline-offset-4 hover:underline">
+            Cyber
+          </Link>
           <Link href="/como-verificamos" className="font-medium underline-offset-4 hover:underline">
             Cómo verificamos
           </Link>

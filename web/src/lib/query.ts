@@ -110,6 +110,30 @@ export function buildSiblingsQuery(id: string, now: number = Date.now()): string
   return params.toString();
 }
 
+/** Posibles errores de precio anunciados en las últimas horas (los escribe el pipeline en offer_sent). */
+export const MISTAKE_HOURS = 48;
+
+export function buildMistakesQuery(now: number = Date.now(), limit = 40): string {
+  const params = new URLSearchParams();
+  params.set("select", "product_id,price,price_error,sent_at");
+  params.set("price_error", "not.is.null");
+  const since = Math.floor((now - MISTAKE_HOURS * 3_600_000) / ROUND_MS) * ROUND_MS;
+  params.set("sent_at", `gte.${new Date(since).toISOString()}`);
+  params.set("order", "sent_at.desc,id.desc");
+  params.set("limit", String(limit));
+  return params.toString();
+}
+
+/** Productos del catálogo por id (solo ids con forma válida: nada del exterior entra en la consulta). */
+export function buildByIdsQuery(ids: string[]): string {
+  const valid = [...new Set(ids.filter(isValidProductId))];
+  const params = new URLSearchParams();
+  params.set("select", LIST_COLUMNS);
+  params.set("id", `in.(${valid.join(",")})`);
+  params.set("limit", String(Math.max(valid.length, 1)));
+  return params.toString();
+}
+
 export function buildHistoryQuery(id: string): string {
   const params = new URLSearchParams();
   params.set("select", "observed_at,price,list_price");

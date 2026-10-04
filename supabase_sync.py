@@ -60,6 +60,7 @@ def _sent_row(offer: ScoredDeal) -> dict:
         "advertised_pct": deal.discount_pct,
         "real_pct": offer.real_discount_pct,
         "reasons": list(offer.reasons),
+        "price_error": offer.price_error,
         "source": "live",
     }
 

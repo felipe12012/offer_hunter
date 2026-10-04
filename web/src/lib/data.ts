@@ -7,8 +7,10 @@ import "server-only";
 import { FIXTURE_ROWS } from "./fixtures";
 import { DEFAULT_FILTERS, PAGE_SIZE, queryWords, type Filters } from "./filters";
 import {
+  buildByIdsQuery,
   buildHistoryQuery,
   buildListQuery,
+  buildMistakesQuery,
   buildProductQuery,
   buildRelatedQuery,
   buildSiblingsQuery,
@@ -17,7 +19,8 @@ import {
 } from "./query";
 import { hasCredentials, rest, SupabaseConfigError } from "./supabase";
 import { VERIFIED_MIN_PCT } from "./tiers";
-import type { FeedRow, FeedStats, PricePoint } from "./types";
+import type { FeedRow, FeedStats, Mistake, MistakeItem, PricePoint } from "./types";
+import { isStale } from "./format";
 
 export const REVALIDATE_SECONDS = 120;
 
@@ -101,6 +104,24 @@ export async function getSuperDeals(): Promise<FeedRow[]> {
   requireCredentials();
   const { rows } = await rest<FeedRow[]>(`offer_feed?${buildSuperQuery()}`, { revalidate: REVALIDATE_SECONDS });
   return rows;
+}
+
+/** Posibles errores de precio de los últimos días, con el estado actual del producto. */
+export async function getMistakes(): Promise<MistakeItem[]> {
+  if (fixtureMode()) return [];
+  requireCredentials();
+  const { rows: mistakes } = await rest<Mistake[]>(`offer_sent?${buildMistakesQuery()}`, { revalidate: 60 });
+  if (mistakes.length === 0) return [];
+  const { rows: products } = await rest<FeedRow[]>(`offer_feed?${buildByIdsQuery(mistakes.map((m) => m.product_id))}`, {
+    revalidate: 60,
+  });
+  const byId = new Map(products.map((row) => [row.id, row]));
+  const items = mistakes.map((mistake): MistakeItem => {
+    const row = byId.get(mistake.product_id) ?? null;
+    return { mistake, row, stillValid: Boolean(row && row.price === mistake.price && !isStale(row.last_seen_at, 2)) };
+  });
+  // Los que siguen a ese precio primero; dentro de cada grupo, los más recientes.
+  return items.sort((a, b) => Number(b.stillValid) - Number(a.stillValid));
 }
 
 export async function getStats(): Promise<FeedStats> {

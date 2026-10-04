@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { DEFAULT_FILTERS, parseFilters } from "./filters";
 import {
+  buildByIdsQuery,
   buildHistoryQuery,
+  buildMistakesQuery,
   buildListQuery,
   buildProductQuery,
   buildRelatedQuery,
@@ -163,5 +165,27 @@ describe("isValidProductId", () => {
     for (const bad of ["", "falabella", "falabella:", ":123", "Falabella:1", "fala bella:1", "falabella:1&limit=5", "falabella:1,2", "falabella:(1)", "a".repeat(200)]) {
       expect(isValidProductId(bad)).toBe(false);
     }
+  });
+});
+
+
+describe("página Cyber", () => {
+  it("errores de precio: solo los marcados, de las últimas 48 horas, los más recientes primero", () => {
+    const p = params(buildMistakesQuery(NOW));
+    expect(p.get("price_error")).toBe("not.is.null");
+    expect(p.get("sent_at")).toBe("gte.2026-10-01T12:00:00.000Z");
+    expect(p.get("order")).toBe("sent_at.desc,id.desc");
+    expect(p.get("limit")).toBe("40");
+    expect(p.get("select")).toBe("product_id,price,price_error,sent_at");
+  });
+
+  it("productos por id: sin repetidos y sin ids inválidos", () => {
+    const p = params(buildByIdsQuery(["falabella:1", "falabella:1", "sodimac:2", "x),(or=1", "raro"]));
+    expect(p.get("id")).toBe("in.(falabella:1,sodimac:2)");
+    expect(p.get("limit")).toBe("2");
+  });
+
+  it("productos por id: sin ids válidos la consulta no devuelve nada ni falla", () => {
+    expect(params(buildByIdsQuery(["x"])).get("id")).toBe("in.()");
   });
 });

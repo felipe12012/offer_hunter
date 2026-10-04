@@ -38,7 +38,18 @@ const server = createServer((req, res) => {
     const id = url.searchParams.get("id");
     if (id?.startsWith("eq.")) return json(rows.filter((r) => r.id === id.slice(3)).map((r) => ({ ...r, category: r.category_group, distinct_prices: 2, hist_min: r.price, hist_max: r.list_price, prev_max: r.list_price, first_point_at: iso(600), first_seen_at: iso(600) })));
     if (id?.startsWith("neq.")) return json(rows.filter((r) => r.id !== id.slice(4)));
+    if (id?.startsWith("in.(")) {
+      const wanted = id.slice(4, -1).split(",");
+      return json(rows.filter((r) => wanted.includes(r.id)));
+    }
     return json(rows, { "Content-Range": `0-${rows.length - 1}/${stats.total}` });
+  }
+  if (url.pathname === "/rest/v1/offer_sent") {
+    // Dos posibles errores: uno que sigue al mismo precio y otro que ya no está en el catálogo.
+    return json([
+      { product_id: "falabella:1001", price: 599990, price_error: "bajó de $1.199.990 a $599.990 (-50% vs último precio visto)", sent_at: iso(20) },
+      { product_id: "sodimac:9999", price: 12990, price_error: "cuesta $12.990 en Sodimac y $59.990 en Falabella (-78% frente a la otra tienda)", sent_at: iso(180) },
+    ]);
   }
   if (url.pathname === "/rest/v1/offer_price_points") {
     return json([

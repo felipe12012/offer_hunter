@@ -156,7 +156,7 @@ def test_record_sent_stores_one_row_per_offer_ignoring_duplicates(monkeypatch):
     assert call["body"] == [{
         "product_id": "falabella:7", "price": 300, "store": "falabella", "title": "Taladro",
         "url": "https://shop/falabella:7", "verified_pct": 40.0, "advertised_pct": 70.0,
-        "real_pct": 40.0, "reasons": ["-40% vs minimo"], "source": "live",
+        "real_pct": 40.0, "reasons": ["-40% vs minimo"], "price_error": None, "source": "live",
     }]
 
 
