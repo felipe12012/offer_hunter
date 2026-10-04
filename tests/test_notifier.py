@@ -629,7 +629,7 @@ def test_unverified_offers_arrive_silently_when_silent_mode_is_on(monkeypatch):
 def test_unverified_offers_are_capped_per_run(monkeypatch):
     rec = Recorder()
     install(monkeypatch, rec)
-    offers = [_unverified(f"store{i}:u", 50.0 + i, store=f"store{i}") for i in range(20)]
+    offers = [_unverified(f"store{i}:u", 50.0 + i, store=f"store{i}") for i in range(MAX_UNVERIFIED_PER_RUN + 5)]
 
     send_offers(offers, bot_token="tok", chat_id="123")
 
@@ -787,12 +787,13 @@ def test_subscribers_are_capped_per_run_and_never_get_the_owner_chat_twice(monke
     import notifier
     rec = Recorder()
     install(monkeypatch, rec)
-    offers = [make_scored(f"sodimac:{i}", store=f"s{i}", category=f"c{i}") for i in range(20)]
+    total = notifier.MAX_SUBSCRIBER_MESSAGES_PER_RUN + 5
+    offers = [make_scored(f"sodimac:{i}", store=f"s{i}", category=f"c{i}") for i in range(total)]
 
     send_offers(offers, bot_token="tok", chat_id="MAIN", subscriber_chat_ids=["MAIN", 111])
 
     chats = _by_chat(rec)
-    assert len(chats["MAIN"]) == 20
+    assert len(chats["MAIN"]) == total
     assert len(chats["111"]) == notifier.MAX_SUBSCRIBER_MESSAGES_PER_RUN
 
 

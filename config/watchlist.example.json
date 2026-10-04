@@ -139,8 +139,8 @@
   "verify_advertised_discount": "label",
   "priority": {
     "min_discount_pct": 20,
-    "max_per_run": 30,
-    "daily_cap": 800,
+    "max_per_run": 40,
+    "daily_cap": 2000,
     "rules": [
       {
         "label": "Zapatillas bebé",

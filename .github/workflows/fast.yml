@@ -31,7 +31,8 @@ jobs:
     environment: env
     # Hard ceiling. A single hung scraper must not hold the concurrency lock for
     # hours; main_fast also caps each store individually, this is the backstop.
-    timeout-minutes: 20
+    # Raised from 20: a Cyber run sends up to ~150 messages (about 2 s each) after a ~10 minute scan.
+    timeout-minutes: 30
     steps:
       # Check out the branch tip, not the commit that existed when the run was
       # triggered. A run queued behind another (see `concurrency`) would
