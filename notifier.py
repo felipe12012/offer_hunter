@@ -14,14 +14,14 @@ TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
 SEND_DELAY_SECONDS = 1.1
 # Ceiling per run so a huge sale can't flood the chat. Offers beyond it are not
 # reported as sent, so the caller leaves them unseen and they go out next run.
-MAX_MESSAGES_PER_RUN = 25
+MAX_MESSAGES_PER_RUN = 60
 # Advertised discounts we could NOT confirm against price history are capped per
 # run, separately from the verified quota. They are the 99% of qualifying offers
 # and the ones most likely to be inflated "always 60% off" prices.
-MAX_UNVERIFIED_PER_RUN = 5
+MAX_UNVERIFIED_PER_RUN = 15
 # Priority interests (watchlist "priority") have their own quota for unconfirmed
 # discounts, on top of the generic one, so they never compete with it.
-MAX_PRIORITY_UNVERIFIED_PER_RUN = 10
+MAX_PRIORITY_UNVERIFIED_PER_RUN = 30
 # A verified discount at or above this always goes first, priority or not.
 BIG_VERIFIED_PCT = 60
 MAX_CAPTION_LENGTH = 1024

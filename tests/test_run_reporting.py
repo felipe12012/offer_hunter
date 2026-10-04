@@ -26,6 +26,8 @@ def make_deal(deal_id: str, price: int = 5000, list_price: int | None = None) ->
 
 
 def patch_paths(monkeypatch, tmp_path: Path, watchlist: dict | None = None):
+    # End of the UTC day: the whole daily cap is released, so these tests do not depend on the hour they run.
+    monkeypatch.setattr(main_fast, "utc_now", lambda: __import__("datetime").datetime.now(__import__("datetime").timezone.utc).replace(hour=23, minute=59))
     watchlist = watchlist or {
         "categories": ["herramientas"], "keywords": [], "min_discount_pct": 100, "min_real_discount_pct": 15,
     }
@@ -457,3 +459,39 @@ def test_only_priority_candidates_waiting_with_room_left_is_a_real_attempt(monke
     monkeypatch.setattr(main_fast, "send_offers", lambda scored, **kw: [])    # telegram swallowed everything
 
     assert main_fast.run() == 1                                      # eligible and undelivered: a real failure
+
+
+# ---- quota pacing and raised caps ---------------------------------------------------------
+
+from datetime import datetime as _dt, timezone as _tz
+
+
+def test_quota_room_releases_the_daily_cap_gradually_through_the_day():
+    cap = 300
+    at = lambda h, m=0: _dt(2026, 10, 3, h, m, tzinfo=_tz.utc)
+
+    # Just after midnight only the head start is available, not the whole day.
+    assert main_fast.quota_room(cap, 0, at(0, 5)) < 40
+    # Mid-day roughly half is available.
+    assert 150 <= main_fast.quota_room(cap, 0, at(12)) <= 190
+    # End of day: everything left.
+    assert main_fast.quota_room(cap, 0, at(23, 55)) == cap
+
+
+def test_quota_room_never_exceeds_what_is_left_and_never_goes_negative():
+    now = _dt(2026, 10, 3, 23, 0, tzinfo=_tz.utc)
+    assert main_fast.quota_room(300, 290, now) == 10
+    assert main_fast.quota_room(300, 300, now) == 0
+    assert main_fast.quota_room(300, 999, now) == 0
+
+
+def test_a_burst_early_in_the_day_cannot_spend_the_whole_cap():
+    now = _dt(2026, 10, 3, 3, 0, tzinfo=_tz.utc)
+    used = 0
+    room = main_fast.quota_room(300, used, now)
+    assert room < 300 * 0.30
+
+
+def test_the_new_caps_are_higher_than_before():
+    assert main_fast.DAILY_UNVERIFIED_CAP >= 300
+    assert main_fast.UNVERIFIED_PER_RUN >= 15

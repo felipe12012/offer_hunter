@@ -163,10 +163,30 @@ RUN_STATUS_PATH = Path(os.environ.get("RUN_STATUS_FILE") or Path(__file__).paren
 SOURCE_TIMEOUT_SECONDS = 420
 # Ceiling on unconfirmed advertised discounts sent per day (across all runs), on
 # top of the per-run cap in notifier. Resets at UTC midnight.
-DAILY_UNVERIFIED_CAP = 60
+DAILY_UNVERIFIED_CAP = 300
+# Most unconfirmed offers one run may send. Together with the pacing below this keeps the
+# chat readable even when a scan finds thousands of candidates.
+UNVERIFIED_PER_RUN = 15
+# Hours of the daily cap available from the start of the (UTC) day, so alerts begin right away.
+PACING_HEAD_START_MINUTES = 120
 # Same idea for the priority interests, which have a quota of their own
 # (overridable in the watchlist's "priority" block).
-DEFAULT_PRIORITY_DAILY_CAP = 200
+DEFAULT_PRIORITY_DAILY_CAP = 800
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def quota_room(cap: int, used: int, now: datetime) -> int:
+    """How many more unconfirmed offers may go out right now.
+
+    The daily cap is released gradually through the UTC day (with a head start), instead of
+    being spendable all at once: before this, the whole cap was used up in the first hours
+    of the day and nothing arrived for the rest of it."""
+    minutes = now.hour * 60 + now.minute
+    released = -(-cap * (minutes + PACING_HEAD_START_MINUTES) // 1440)  # ceil
+    return max(0, min(cap - used, min(released, cap) - used))
 
 
 def load_budget(path: Path, today: str) -> dict:
@@ -474,12 +494,15 @@ def run() -> int:
             candidates.append(scored)
 
     candidates, aliases = dedupe_cross_store(candidates)
-    today = datetime.now(timezone.utc).date().isoformat()
+    now_utc = utc_now()
+    today = now_utc.date().isoformat()
     budget = load_budget(BUDGET_PATH, today)
-    unverified_room = max(0, DAILY_UNVERIFIED_CAP - budget.get("unverified", 0))
+    unverified_room = min(
+        UNVERIFIED_PER_RUN, quota_room(DAILY_UNVERIFIED_CAP, budget.get("unverified", 0), now_utc)
+    )
     priority_config = watchlist.get("priority") or {}
-    priority_room = max(
-        0, priority_config.get("daily_cap", DEFAULT_PRIORITY_DAILY_CAP) - budget.get("priority_unverified", 0)
+    priority_room = quota_room(
+        priority_config.get("daily_cap", DEFAULT_PRIORITY_DAILY_CAP), budget.get("priority_unverified", 0), now_utc
     )
     priority_limit = min(
         priority_config.get("max_per_run", MAX_PRIORITY_UNVERIFIED_PER_RUN), priority_room

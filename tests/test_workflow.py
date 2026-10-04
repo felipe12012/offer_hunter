@@ -30,6 +30,8 @@ def make_deal(
 
 
 def _patch_paths(monkeypatch, tmp_path: Path):
+    # End of the UTC day: the whole daily cap is released, so these tests do not depend on the hour they run.
+    monkeypatch.setattr(main_fast, "utc_now", lambda: __import__("datetime").datetime.now(__import__("datetime").timezone.utc).replace(hour=23, minute=59))
     watchlist = {
         "categories": ["herramientas"],
         "keywords": [],

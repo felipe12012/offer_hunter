@@ -131,7 +131,7 @@ cuando falla.
 | `alerts.alert_chat_min_pct` | Desde este % la oferta va al chat de alertas, si `TELEGRAM_ALERT_CHAT_ID` está definido (80) |
 | `priority.rules` | Intereses prioritarios (zapatillas mujer/hombre/bebé, Kerastase Blond, colchón 1 plaza, tablets, ropa, consolas, videojuegos, comida de gato NYD). Cada regla: `label`, `all` (grupos; debe cumplirse al menos una palabra de **cada** grupo), `none` (palabras que la descartan) y `not_stores`. Se compara con el **título** y el nombre del departamento de la tienda, nunca con la palabra de búsqueda. Una palabra con `=` delante solo coincide como palabra completa |
 | `priority.min_discount_pct` | Descuento anunciado mínimo para los prioritarios (20, en vez de 30) |
-| `priority.max_per_run`, `priority.daily_cap` | Cupo propio de prioritarios **no verificados**: 10 por run y 200 por día (aparte del cupo genérico de 5 y 60). Se reparten entre los intereses |
+| `priority.max_per_run`, `priority.daily_cap` | Cupo propio de prioritarios **no verificados**: 30 por run y 800 por día (aparte del cupo genérico de 15 por run y 300 por día). Se reparten entre los intereses |
 | `scan.deep_slugs`, `scan.deep_pages` | Categorías de tienda que se leen más a fondo (10 páginas en vez de 4) por ser de interés prioritario |
 | `scan.max_search_pages` | Páginas por búsqueda en Falabella/Sodimac (3) |
 | `scan.max_category_pages` | Páginas por categoría (4; son 48 productos por página) |
@@ -163,6 +163,10 @@ sin esperar un escaneo:
 ```
 python -c "import json; from priority import *; r=rules_from(json.load(open('config/watchlist.json'))['priority']); print(first_match(r, 'Zapatilla Mujer Nike Air', '', 'falabella'))"
 ```
+
+**Cupos de ofertas sin verificar.** Hay un límite diario (300 genéricas y 800 prioritarias) para no inundar el chat,
+y se **libera poco a poco durante el día UTC** (con 2 h de ventaja al inicio), en vez de poder gastarse de golpe:
+antes se agotaba en las primeras horas y el resto del día no llegaba nada. Las ofertas verificadas no tienen cupo.
 
 ## 5. Telegram
 
@@ -302,7 +306,7 @@ error: sospechoso, suele ser un bloqueo o un cambio de la web) · `disabled`.
 | Tienda en `empty` | Todas sus consultas devolvieron 0 productos: bloqueo de IP o cambio de estructura |
 | Tienda en `failed` con el mismo mensaje en cada run | Bloqueada o cambió su HTML. Reproducir con `python -c "from sources import <tienda>; …"` desde tu PC |
 | Muchas consultas "empty" en una tienda `ok` | Normal: una farmacia no vende "notebook". No se cuenta como error |
-| `Telegram: nothing sent … quota` | El cupo diario de no verificadas se agotó (60/día, se reinicia a medianoche UTC) y no hay verificadas. No es un fallo |
+| `Telegram: nothing sent … quota` | El cupo diario de no verificadas se agotó (300/día, se reinicia a medianoche UTC) y no hay verificadas. No es un fallo |
 | `delivered 0/N` y el run falla | Token o chat de Telegram incorrectos, o el bot nunca recibió un mensaje tuyo |
 | `qualifying` siempre 0 | Normal los primeros días: el historial aún no confirma descuentos |
 | No hay runs cada 15 minutos | El cron de GitHub se salta ciclos; revisar el job de cron-job.org (ver `docs/trigger-setup.md`) |
