@@ -14,6 +14,7 @@ import json
 import os
 import sys
 import time
+from datetime import datetime, timezone
 
 import requests
 
@@ -57,6 +58,10 @@ def _sent_row(offer: ScoredDeal) -> dict:
         "reasons": list(offer.reasons),
         "source": "live",
     }
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _chunks(items: list, size: int):
@@ -114,6 +119,55 @@ class SupabaseSync:
             if attempt < ATTEMPTS:
                 time.sleep(2 * attempt)
         raise SupabaseError(f"POST {path} failed ({last_error})")
+
+    # -- bot subscribers -------------------------------------------------------
+
+    def _get_rows(self, table: str, params: dict) -> list[dict]:
+        response = requests.get(
+            f"{self.url}/rest/v1/{table}", headers=self._headers(), params=params, timeout=REQUEST_TIMEOUT_SECONDS
+        )
+        if response.status_code >= 400:
+            raise SupabaseError(f"GET {table} failed (HTTP {response.status_code}: {response.text[:200]})")
+        return response.json()
+
+    def active_subscribers(self) -> list[int]:
+        rows = self._get_rows("offer_subscribers", {"select": "chat_id", "active": "eq.true", "order": "chat_id"})
+        return [int(row["chat_id"]) for row in rows]
+
+    def upsert_subscriber(self, chat_id: int, username: str | None, first_name: str | None, active: bool) -> None:
+        self._post(
+            "offer_subscribers",
+            [{"chat_id": chat_id, "username": username, "first_name": first_name, "active": active,
+              "updated_at": _now_iso()}],
+            prefer="resolution=merge-duplicates,return=minimal",
+            params={"on_conflict": "chat_id"},
+        )
+
+    def set_subscribers_active(self, chat_ids: list[int], active: bool) -> None:
+        if not chat_ids:
+            return
+        ids = ",".join(str(int(chat_id)) for chat_id in chat_ids)
+        response = requests.patch(
+            f"{self.url}/rest/v1/offer_subscribers",
+            headers=self._headers("return=minimal"),
+            params={"chat_id": f"in.({ids})"},
+            data=json.dumps({"active": active, "updated_at": _now_iso()}),
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+        if response.status_code >= 400:
+            raise SupabaseError(f"PATCH offer_subscribers failed (HTTP {response.status_code}: {response.text[:200]})")
+
+    def get_bot_state(self, key: str) -> str | None:
+        rows = self._get_rows("offer_bot_state", {"select": "value", "key": f"eq.{key}"})
+        return rows[0]["value"] if rows else None
+
+    def set_bot_state(self, key: str, value: str) -> None:
+        self._post(
+            "offer_bot_state",
+            [{"key": key, "value": value, "updated_at": _now_iso()}],
+            prefer="resolution=merge-duplicates,return=minimal",
+            params={"on_conflict": "key"},
+        )
 
     # -- scan mirror ---------------------------------------------------------
 

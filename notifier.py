@@ -12,6 +12,14 @@ from models import ScoredDeal
 TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
 # Telegram throttles a single chat to ~1 message/second; stay just under it.
 SEND_DELAY_SECONDS = 1.1
+# Subscribers are different chats, so only Telegram's global limit (~30 messages/s) applies.
+SUBSCRIBER_DELAY_SECONDS = 0.1
+# Each subscriber gets at most this many offers per run (the best ones), and the whole fan-out
+# stops after this long so a big subscriber list cannot run the job into its timeout.
+MAX_SUBSCRIBER_MESSAGES_PER_RUN = 15
+SUBSCRIBER_TIME_BUDGET_SECONDS = 240
+# Chats that answered 403 (blocked the bot) during this process. The caller deactivates them.
+UNREACHABLE_CHATS: set[str] = set()
 # Ceiling per run so a huge sale can't flood the chat. Offers beyond it are not
 # reported as sent, so the caller leaves them unseen and they go out next run.
 MAX_MESSAGES_PER_RUN = 60
@@ -176,6 +184,11 @@ def _post(token: str, method: str, **kwargs) -> bool:
             except Exception:
                 detail = response.text[:200]
             print(f"Telegram {method} failed with HTTP {response.status_code}: {detail}", file=sys.stderr)
+            if response.status_code == 403:
+                # The user blocked the bot or deleted the chat: it will never work again.
+                body = kwargs.get("json") or kwargs.get("data") or {}
+                if body.get("chat_id") is not None:
+                    UNREACHABLE_CHATS.add(str(body["chat_id"]))
             return False
         return True
     return False
@@ -353,11 +366,14 @@ def send_offers(
     max_unverified: int | None = None,
     max_priority_unverified: int | None = None,
     public_chat_id: str | None = None,
+    subscriber_chat_ids: list | None = None,
 ) -> list[ScoredDeal]:
     """Send each offer as its own Telegram message (photo + caption + link button).
 
     ``public_chat_id`` (or TELEGRAM_PUBLIC_CHAT_ID) is a channel that receives a copy of every
     delivered offer, so anyone can follow it without being registered in the bot.
+    ``subscriber_chat_ids`` are the private chats that pressed /start: they get the best of the
+    delivered offers (see ``_send_to_subscribers``).
 
     Offers at or above ``alerts["alert_chat_min_pct"]`` go to the alert chat when
     one is configured (argument or TELEGRAM_ALERT_CHAT_ID); everything else, and
@@ -445,7 +461,48 @@ def send_offers(
             f"Telegram: {len(delivered)} delivered ({photo_messages} with photo, {text_messages} as text)",
             file=sys.stderr,
         )
+    if subscriber_chat_ids and delivered:
+        own_chats = {str(chat) for chat in (chat_id, alert_chat_id, public_chat_id) if chat}
+        _send_to_subscribers(delivered, bot_token, subscriber_chat_ids, own_chats, alerts, alert_min)
     return delivered
+
+
+def _send_to_subscribers(
+    delivered: list[ScoredDeal],
+    token: str,
+    subscriber_chat_ids: list,
+    own_chats: set[str],
+    alerts: dict | None,
+    alert_min: float,
+) -> None:
+    """Send the best of this run's offers to everyone who pressed /start.
+
+    Subscribers are not spammed with every unconfirmed discount: they get verified offers,
+    priority interests and big discounts, best first, at most MAX_SUBSCRIBER_MESSAGES_PER_RUN."""
+    worth_sending = [
+        scored for scored in delivered
+        if scored.advertised_confirmed or scored.priority or _rank_key(scored) >= alert_min
+    ]
+    worth_sending.sort(key=_order_key, reverse=True)
+    worth_sending = worth_sending[:MAX_SUBSCRIBER_MESSAGES_PER_RUN]
+    recipients = [str(chat) for chat in subscriber_chat_ids if str(chat) not in own_chats]
+    if not worth_sending or not recipients:
+        return
+
+    started = time.monotonic()
+    sent = 0
+    for scored in worth_sending:
+        for chat in recipients:
+            if chat in UNREACHABLE_CHATS:
+                continue
+            if time.monotonic() - started > SUBSCRIBER_TIME_BUDGET_SECONDS:
+                print(f"Subscriber fan-out stopped after {SUBSCRIBER_TIME_BUDGET_SECONDS}s", file=sys.stderr)
+                print(f"Subscribers: {sent} messages sent to {len(recipients)} chats", file=sys.stderr)
+                return
+            time.sleep(SUBSCRIBER_DELAY_SECONDS)
+            if _send_one(scored, token, chat, alerts):
+                sent += 1
+    print(f"Subscribers: {sent} messages sent to {len(recipients)} chats", file=sys.stderr)
 
 
 def send_alert(text: str, bot_token: str | None = None, chat_id: str | None = None) -> bool:

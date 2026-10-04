@@ -70,6 +70,8 @@ class Recorder:
 
 
 def install(monkeypatch, recorder, get=None):
+    import notifier
+    notifier.UNREACHABLE_CHATS.clear()
     for name in ("TELEGRAM_ALERT_CHAT_ID", "TELEGRAM_ALERT_THREAD_ID", "TELEGRAM_PUBLIC_CHAT_ID"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr("notifier.requests.post", recorder)
@@ -766,3 +768,51 @@ def test_the_priority_quota_is_shared_between_the_interests_not_taken_by_the_big
     sent = send_offers(offers, bot_token="tok", chat_id="123", max_unverified=0, max_priority_unverified=3)
 
     assert {o.priority for o in sent} == {"Ropa mujer", "Tablet", "Colchón 1 plaza"}   # one of each, not 3x ropa
+
+
+def test_subscribers_get_the_best_offers_but_not_every_unconfirmed_one(monkeypatch):
+    rec = Recorder()
+    install(monkeypatch, rec)
+    offers = [make_scored("sodimac:ok"), make_scored("sodimac:meh", advertised_confirmed=False, **SMALL)]
+
+    send_offers(offers, bot_token="tok", chat_id="MAIN", subscriber_chat_ids=[111, 222])
+
+    chats = _by_chat(rec)
+    assert len(chats["MAIN"]) == 2
+    assert len(chats["111"]) == 1 and len(chats["222"]) == 1
+    assert "sodimac:ok" in chats["111"][0][1]["caption"]
+
+
+def test_subscribers_are_capped_per_run_and_never_get_the_owner_chat_twice(monkeypatch):
+    import notifier
+    rec = Recorder()
+    install(monkeypatch, rec)
+    offers = [make_scored(f"sodimac:{i}", store=f"s{i}", category=f"c{i}") for i in range(20)]
+
+    send_offers(offers, bot_token="tok", chat_id="MAIN", subscriber_chat_ids=["MAIN", 111])
+
+    chats = _by_chat(rec)
+    assert len(chats["MAIN"]) == 20
+    assert len(chats["111"]) == notifier.MAX_SUBSCRIBER_MESSAGES_PER_RUN
+
+
+def test_a_subscriber_who_blocked_the_bot_is_reported_and_skipped(monkeypatch):
+    import notifier
+    rec = Recorder()
+    install(monkeypatch, rec)
+
+    def post(url, json=None, data=None, files=None, timeout=None):
+        if json and json.get("chat_id") == "111":
+            rec.calls.append((url.rsplit("/", 1)[-1], json, files))
+            return FakeResponse(403, payload={"description": "Forbidden: bot was blocked by the user"})
+        return rec(url, json=json, data=data, files=files, timeout=timeout)
+
+    monkeypatch.setattr("notifier.requests.post", post)
+    offers = [make_scored(f"sodimac:{i}", store=f"s{i}", category=f"c{i}") for i in range(3)]
+
+    sent = send_offers(offers, bot_token="tok", chat_id="MAIN", subscriber_chat_ids=[111, 222])
+
+    assert len(sent) == 3  # the owner still gets everything
+    assert "111" in notifier.UNREACHABLE_CHATS
+    assert len([c for c in rec.calls if c[1].get("chat_id") == "111"]) <= 3 * 2  # photo + text fallback, first offer only
+    assert len(_by_chat(rec)["222"]) == 3

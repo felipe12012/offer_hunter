@@ -14,7 +14,9 @@ from dotenv import load_dotenv
 from deal_filter import evaluate
 from dedup import deal_key, load_seen, mark_seen
 from models import Deal, ScoredDeal
+import notifier
 from notifier import MAX_PRIORITY_UNVERIFIED_PER_RUN, send_alert, send_offers
+from subscribers import process_updates
 from price_history import load_price_history, save_price_history, update_price_history
 from reports import StoreReport, build_report, format_log, store_transitions, to_json, to_markdown
 from sources import health
@@ -374,6 +376,40 @@ def announce_store_health(mirror, reports: list[StoreReport]) -> None:
         print(f"Store health check skipped: {exc}", file=sys.stderr)
 
 
+def refresh_subscribers() -> list[int]:
+    """Register /start and /stop received since the last run and return the active chats.
+
+    Needs Supabase (that is where subscribers live); without it, or when it fails, the offers
+    still go out to the configured chats."""
+    store = SupabaseSync.from_env()
+    if store is None:
+        return []
+    counts = process_updates(store)
+    try:
+        subscribers = store.active_subscribers()
+    except Exception as exc:
+        log_failure("read subscribers", exc)
+        return []
+    print(
+        f"Subscribers: {len(subscribers)} active (+{counts['subscribed']} /start, -{counts['unsubscribed']} /stop)",
+        file=sys.stderr,
+    )
+    return subscribers
+
+
+def deactivate_unreachable(subscribers: list[int]) -> None:
+    """Subscribers who blocked the bot (Telegram answered 403) stop being messaged."""
+    gone = [chat for chat in subscribers if str(chat) in notifier.UNREACHABLE_CHATS]
+    store = SupabaseSync.from_env() if gone else None
+    if not store:
+        return
+    try:
+        store.set_subscribers_active(gone, False)
+        print(f"Subscribers: {len(gone)} blocked the bot and were deactivated", file=sys.stderr)
+    except Exception as exc:
+        log_failure("deactivate subscribers", exc)
+
+
 def mirror_to_supabase(
     deals: list[Deal],
     delivered: list[ScoredDeal],
@@ -507,16 +543,19 @@ def run() -> int:
     priority_limit = min(
         priority_config.get("max_per_run", MAX_PRIORITY_UNVERIFIED_PER_RUN), priority_room
     )
+    subscribers = refresh_subscribers()
     delivered = (
         send_offers(
             candidates,
             alerts=watchlist.get("alerts"),
             max_unverified=unverified_room,
             max_priority_unverified=priority_limit,
+            subscriber_chat_ids=subscribers,
         )
         if candidates
         else []
     )
+    deactivate_unreachable(subscribers)
     delivered_keys: set[str] = set()
     for scored in delivered:
         key = deal_key(scored.deal)

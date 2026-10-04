@@ -176,6 +176,14 @@ antes se agotaba en las primeras horas y el resto del día no llegaba nada. Las 
 - **Chat de alertas**: con `TELEGRAM_ALERT_CHAT_ID` configurado, las ofertas de 80 % o más van
   ahí (siempre con sonido) y el resto al chat principal (en silencio). Si el chat de alertas
   falla, la oferta se envía al principal: no se pierde.
+- **Suscriptores del bot**: quien escribe `/start` al bot en un chat privado queda en la tabla
+  `offer_subscribers` de Supabase (migración `0006`) y recibe lo mejor de cada run: ofertas
+  verificadas, de intereses prioritarios o de 80 % o más (máx. 15 por persona y run, para no
+  saturar). `/stop` o bloquear el bot los da de baja. No hay servidor: al inicio de cada run el
+  pipeline lee los mensajes pendientes del bot (`getUpdates`) y responde, así que la bienvenida
+  llega en un máximo de ~15 min. Requiere `SUPABASE_URL`/`SUPABASE_SERVICE_KEY`. Si el bot tuviera
+  un webhook configurado, `getUpdates` no funciona: no lo configures.
+- **Canal público** (`TELEGRAM_PUBLIC_CHAT_ID`): recibe una copia de cada oferta, para seguirlas sin bot.
 - Si Telegram no puede bajar la foto desde la URL, el programa la descarga y la sube; si tampoco, el
   mensaje sale sin foto. **Nunca se pierde una oferta por una imagen.**
 - Máximo **25 mensajes por run** (1,1 s entre mensajes y un reintento si Telegram responde 429).
