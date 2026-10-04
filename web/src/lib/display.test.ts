@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { agoFrom, clp, groupName, isStale, storeName } from "./format";
+import { agoFrom, clp, groupName, isStale, storeName, subName } from "./format";
 import { dealView, tierFor } from "./tiers";
 
 describe("tierFor", () => {
@@ -75,6 +75,9 @@ describe("nombres", () => {
   });
   it("traduce los grupos", () => {
     expect(groupName("tecnologia")).toBe("Tecnología");
+    expect(groupName("zapatillas")).toBe("Zapatillas y calzado");
+    expect(subName("zapatillas", "mujer")).toBe("Mujer");
+    expect(subName("zapatillas", "raro")).toBe("raro");
     expect(groupName("raro")).toBe("raro");
   });
 });

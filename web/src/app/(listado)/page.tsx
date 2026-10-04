@@ -7,7 +7,7 @@ import { SortBar } from "@/components/SortBar";
 import { SuperDeals } from "@/components/SuperDeals";
 import { getFeed, getStats, getSuperDeals } from "@/lib/data";
 import { activeFilterCount, parseFilters } from "@/lib/filters";
-import { agoFrom, groupName } from "@/lib/format";
+import { agoFrom, groupName, subName } from "@/lib/format";
 
 export const revalidate = 120;
 
@@ -16,6 +16,7 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 export async function generateMetadata({ searchParams }: { searchParams: SearchParams }) {
   const filters = parseFilters(await searchParams);
   if (filters.q) return { title: `“${filters.q}”` };
+  if (filters.cat && filters.sub) return { title: `${subName(filters.cat, filters.sub)} · ${groupName(filters.cat)}` };
   if (filters.cat) return { title: groupName(filters.cat) };
   return {};
 }
@@ -61,7 +62,15 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         </section>
       ) : (
         <h1 className="mb-4 font-display text-3xl font-bold sm:text-4xl">
-          {filters.q ? <>Resultados para “{filters.q}”</> : filters.cat ? groupName(filters.cat) : "Resultados filtrados"}
+          {filters.q ? (
+            <>Resultados para “{filters.q}”</>
+          ) : filters.cat && filters.sub ? (
+            `${groupName(filters.cat)}: ${subName(filters.cat, filters.sub)}`
+          ) : filters.cat ? (
+            groupName(filters.cat)
+          ) : (
+            "Resultados filtrados"
+          )}
         </h1>
       )}
 

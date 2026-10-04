@@ -7,6 +7,7 @@ export type FeedRow = {
   image_url: string;
   category: string;
   category_group: string;
+  subcat?: string | null;
   price: number;
   list_price: number;
   web_discount_pct: number;
@@ -38,4 +39,6 @@ export type FeedStats = {
   last_seen: string | null;
   stores: Record<string, number>;
   groups: Record<string, number>;
+  /** categoría → subcategoría → cantidad */
+  subs?: Record<string, Record<string, number>>;
 };

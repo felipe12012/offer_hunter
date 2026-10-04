@@ -7,7 +7,7 @@ import { DiscountTag, VerifiedStamp } from "@/components/DiscountTag";
 import { PriceChart } from "@/components/PriceChart";
 import { getHistory, getProduct, getRelated, getSiblings } from "@/lib/data";
 import { explainDeal } from "@/lib/explain";
-import { agoFrom, clp, groupName, isStale, storeName } from "@/lib/format";
+import { agoFrom, clp, groupName, isStale, storeName, subName } from "@/lib/format";
 import { dealView } from "@/lib/tiers";
 
 export const revalidate = 120;
@@ -61,6 +61,15 @@ export default async function ProductPage({ params }: { params: Params }) {
         <Link href={`/?cat=${row.category_group}`} className="underline underline-offset-4">
           {groupName(row.category_group)}
         </Link>
+        {row.subcat ? (
+          <>
+            {" "}
+            /{" "}
+            <Link href={`/?cat=${row.category_group}&sub=${row.subcat}`} className="underline underline-offset-4">
+              {subName(row.category_group, row.subcat)}
+            </Link>
+          </>
+        ) : null}
       </nav>
 
       <div className="grid gap-8 md:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] md:gap-12">

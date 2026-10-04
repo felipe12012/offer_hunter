@@ -47,7 +47,7 @@ describe("parseFilters", () => {
   it("acepta valores válidos", () => {
     expect(
       parseFilters({ q: "Taladro", cat: "tecnologia", store: "falabella,sodimac", min: "50", pmin: "1000", pmax: "90000", ver: "1", sort: "price_asc", page: "3" }),
-    ).toEqual({ q: "taladro", cat: "tecnologia", stores: ["falabella", "sodimac"], min: 50, pmin: 1000, pmax: 90000, ver: true, sort: "price_asc", page: 3 });
+    ).toEqual({ q: "taladro", cat: "tecnologia", sub: null, stores: ["falabella", "sodimac"], min: 50, pmin: 1000, pmax: 90000, ver: true, sort: "price_asc", page: 3 });
   });
 
   it("descarta categorías y órdenes que no están en la lista blanca", () => {
@@ -112,5 +112,31 @@ describe("activeFilterCount", () => {
   it("cuenta cada grupo de filtros una vez", () => {
     expect(activeFilterCount(DEFAULT_FILTERS)).toBe(0);
     expect(activeFilterCount({ ...DEFAULT_FILTERS, pmin: 1, pmax: 2, cat: "ropa" })).toBe(2);
+  });
+});
+
+
+describe("subcategorías", () => {
+  it("una subcategoría solo vale dentro de su categoría", () => {
+    expect(parseFilters({ cat: "zapatillas", sub: "mujer" }).sub).toBe("mujer");
+    expect(parseFilters({ cat: "tecnologia", sub: "mujer" }).sub).toBeNull();
+    expect(parseFilters({ sub: "mujer" }).sub).toBeNull();
+  });
+
+  it("rechaza lo que no está en la lista de subcategorías", () => {
+    expect(parseFilters({ cat: "ropa", sub: "x; drop table" }).sub).toBeNull();
+    expect(parseFilters({ cat: "ropa", sub: "__proto__" }).sub).toBeNull();
+    expect(parseFilters({ cat: "ropa", sub: "constructor" }).sub).toBeNull();
+  });
+
+  it("viaja en la URL junto a la categoría y cuenta como un filtro activo", () => {
+    const f = parseFilters({ cat: "ropa", sub: "hombre" });
+    expect(filtersToQuery(f)).toBe("cat=ropa&sub=hombre");
+    expect(activeFilterCount(f)).toBe(2);
+  });
+
+  it("cambiar de categoría descarta la subcategoría anterior", () => {
+    const f = parseFilters({ cat: "ropa", sub: "hombre" });
+    expect(filtersHref(f, { cat: "zapatillas", sub: null })).toBe("/?cat=zapatillas");
   });
 });

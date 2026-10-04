@@ -36,6 +36,7 @@ function fixtureFilter(filters: Filters): FixtureRow[] {
   const words = queryWords(filters.q);
   const rows = FIXTURES.filter((row) => {
     if (filters.cat && row.category_group !== filters.cat) return false;
+    if (filters.cat && filters.sub && row.subcat !== filters.sub) return false;
     if (filters.stores.length && !filters.stores.includes(row.store)) return false;
     if (filters.min !== null) {
       const pool = filters.ver ? row.verified_pct : Math.max(row.verified_pct, row.web_discount_pct);
@@ -61,9 +62,12 @@ function fixtureFilter(filters: Filters): FixtureRow[] {
 function fixtureStats(): FeedStats {
   const stores: Record<string, number> = {};
   const groups: Record<string, number> = {};
+  const subs: Record<string, Record<string, number>> = {};
   for (const row of FIXTURES) {
     stores[row.store] = (stores[row.store] ?? 0) + 1;
     groups[row.category_group] = (groups[row.category_group] ?? 0) + 1;
+    const sub = row.subcat ?? "otros";
+    subs[row.category_group] = { ...subs[row.category_group], [sub]: (subs[row.category_group]?.[sub] ?? 0) + 1 };
   }
   return {
     total: FIXTURES.length,
@@ -72,6 +76,7 @@ function fixtureStats(): FeedStats {
     last_seen: FIXTURES.map((r) => r.last_seen_at).sort().at(-1) ?? null,
     stores,
     groups,
+    subs,
   };
 }
 

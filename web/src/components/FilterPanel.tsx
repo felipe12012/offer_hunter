@@ -1,7 +1,8 @@
 import Link from "next/link";
 
 import { activeFilterCount, filtersHref, filtersToQuery, GROUPS, MIN_OPTIONS, type Filters } from "@/lib/filters";
-import { groupName, storeName } from "@/lib/format";
+import { groupName, storeName, subName } from "@/lib/format";
+import { SUBCATEGORIES } from "@/lib/taxonomy";
 import type { FeedStats } from "@/lib/types";
 
 const MAX_STORES_SHOWN = 14;
@@ -15,13 +16,26 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Choice({ href, active, children, count }: { href: string; active: boolean; children: React.ReactNode; count?: number }) {
+function Choice({
+  href,
+  active,
+  current,
+  children,
+  count,
+}: {
+  href: string;
+  active: boolean;
+  /** El elemento es la rama abierta aunque no sea la selección exacta (la categoría con una subcategoría elegida). */
+  current?: boolean;
+  children: React.ReactNode;
+  count?: number;
+}) {
   return (
     <Link
       href={href}
-      aria-current={active ? "true" : undefined}
+      aria-current={active ? "true" : current ? "location" : undefined}
       className={`flex min-h-11 items-center justify-between gap-2 px-2 text-[0.95rem] ${
-        active ? "bg-ink font-semibold text-paper" : "hover:bg-claim-bg"
+        active ? "bg-ink font-semibold text-paper" : current ? "font-semibold hover:bg-claim-bg" : "hover:bg-claim-bg"
       }`}
     >
       <span>{children}</span>
@@ -50,9 +64,32 @@ function FilterBody({ filters, stats }: { filters: Filters; stats: FeedStats }) 
             Todas
           </Choice>
           {groups.map((group) => (
-            <Choice key={group} href={filtersHref(filters, { cat: group })} active={filters.cat === group} count={stats.groups[group]}>
-              {groupName(group)}
-            </Choice>
+            <div key={group}>
+              <Choice
+                href={filtersHref(filters, { cat: group, sub: null })}
+                active={filters.cat === group && filters.sub === null}
+                current={filters.cat === group}
+                count={stats.groups[group]}
+              >
+                {groupName(group)}
+              </Choice>
+              {filters.cat === group ? (
+                <div className="ml-3 border-l border-line pl-1" role="group" aria-label={`Subcategorías de ${groupName(group)}`}>
+                  {Object.keys(SUBCATEGORIES[group] ?? {})
+                    .filter((sub) => (stats.subs?.[group]?.[sub] ?? 0) > 0)
+                    .map((sub) => (
+                      <Choice
+                        key={sub}
+                        href={filtersHref(filters, { cat: group, sub })}
+                        active={filters.sub === sub}
+                        count={stats.subs?.[group]?.[sub]}
+                      >
+                        {subName(group, sub)}
+                      </Choice>
+                    ))}
+                </div>
+              ) : null}
+            </div>
           ))}
         </nav>
       </Section>

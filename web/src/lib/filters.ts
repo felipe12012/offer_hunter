@@ -1,15 +1,7 @@
 // Filtros de la portada: todo vive en la URL (se pueden compartir) y todo se valida aquí.
-export const GROUPS = [
-  "tecnologia",
-  "muebles",
-  "zapatillas",
-  "ropa",
-  "belleza",
-  "mascotas",
-  "herramientas",
-  "otros",
-] as const;
-export type Group = (typeof GROUPS)[number];
+import { GROUPS, SUBCATEGORIES, type Group } from "./taxonomy";
+
+export { GROUPS, type Group };
 
 export const SORTS = ["best", "web", "price_asc", "price_desc", "saving", "new"] as const;
 export type Sort = (typeof SORTS)[number];
@@ -25,6 +17,7 @@ export const MAX_PRICE = 100_000_000;
 export type Filters = {
   q: string;
   cat: Group | null;
+  sub: string | null;
   stores: string[];
   min: number | null;
   pmin: number | null;
@@ -37,6 +30,7 @@ export type Filters = {
 export const DEFAULT_FILTERS: Filters = {
   q: "",
   cat: null,
+  sub: null,
   stores: [],
   min: null,
   pmin: null,
@@ -86,9 +80,13 @@ export function parseFilters(raw: Raw): Filters {
   const pmax = toInt(first(raw.pmax), 0, MAX_PRICE);
   const sort = first(raw.sort) as Sort;
   const page = toInt(first(raw.page), 1, MAX_PAGE) ?? 1;
+  const validCat = (GROUPS as readonly string[]).includes(cat) ? cat : null;
+  const sub = first(raw.sub);
   return {
     q: normalizeQuery(first(raw.q)),
-    cat: (GROUPS as readonly string[]).includes(cat) ? cat : null,
+    cat: validCat,
+    // La subcategoría solo vale dentro de su categoría (y solo las que existen).
+    sub: validCat && Object.hasOwn(SUBCATEGORIES[validCat] ?? {}, sub) ? sub : null,
     stores: [...new Set(stores)].slice(0, MAX_STORES),
     min,
     pmin,
@@ -105,6 +103,7 @@ export function filtersToQuery(filters: Filters, overrides: Partial<Filters> = {
   const params = new URLSearchParams();
   if (f.q) params.set("q", f.q);
   if (f.cat) params.set("cat", f.cat);
+  if (f.cat && f.sub) params.set("sub", f.sub);
   if (f.stores.length) params.set("store", f.stores.join(","));
   if (f.min !== null) params.set("min", String(f.min));
   if (f.pmin !== null) params.set("pmin", String(f.pmin));
@@ -125,6 +124,7 @@ export function activeFilterCount(f: Filters): number {
   return (
     (f.q ? 1 : 0) +
     (f.cat ? 1 : 0) +
+    (f.sub ? 1 : 0) +
     (f.stores.length ? 1 : 0) +
     (f.min !== null ? 1 : 0) +
     (f.pmin !== null || f.pmax !== null ? 1 : 0) +

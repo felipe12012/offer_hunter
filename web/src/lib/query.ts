@@ -8,7 +8,7 @@ export const FRESH_HOURS = 6;
 const ROUND_MS = 10 * 60_000; // la hora se redondea para que la URL (y su caché) no cambie en cada petición
 
 export const LIST_COLUMNS = [
-  "id", "store", "title", "url", "image_url", "category_group", "price", "list_price",
+  "id", "store", "title", "url", "image_url", "category_group", "subcat", "price", "list_price",
   "web_discount_pct", "saving", "verified_pct", "web_confirmed", "history_drop_pct", "points",
   "prev_min", "last_seen_at",
 ].join(",");
@@ -47,6 +47,7 @@ export function buildListQuery(
   if (excluded.length) params.set("id", `not.in.(${excluded.join(",")})`);
 
   if (filters.cat) params.set("category_group", `eq.${filters.cat}`);
+  if (filters.cat && filters.sub) params.set("subcat", `eq.${filters.sub}`);
   if (filters.stores.length) params.set("store", `in.(${filters.stores.join(",")})`);
 
   if (filters.min !== null) {

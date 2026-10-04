@@ -251,6 +251,7 @@ select started_at, scanned, qualifying, delivered, per_store, duration_seconds f
 | `deal_filter.py` | Reglas de la sección 2 |
 | `price_history.py` | Lectura/escritura del historial de precios |
 | `dedup.py` | Claves `id:precio` de ofertas ya entregadas |
+| `taxonomy.py` | Categoría y subcategoría de cada producto, decididas por el **título** (la `category` de la tienda es la palabra que buscó el escáner, no lo que es el producto). Para cambiar categorías se edita aquí y se ejecuta `python scripts/gen_web_taxonomy.py` (genera `web/src/lib/taxonomy.ts`; un test falla si se olvida). El siguiente escaneo reclasifica todo lo que ve |
 | `supabase_sync.py` | Cliente de Supabase: copia productos, puntos de precio, ofertas enviadas y estadísticas de cada run |
 | `migrate_to_supabase.py` | Importa una vez los JSON a Supabase (acción *migrate* del workflow) |
 | `notifier.py` | Formato y envío a Telegram (foto, reintentos, respaldo) |

@@ -118,6 +118,15 @@ describe("otras consultas", () => {
   });
 });
 
+describe("subcategoría", () => {
+  it("filtra por subcat solo si hay categoría", () => {
+    const p = params(buildListQuery(parseFilters({ cat: "zapatillas", sub: "mujer" }), NOW));
+    expect(p.get("category_group")).toBe("eq.zapatillas");
+    expect(p.get("subcat")).toBe("eq.mujer");
+    expect(params(buildListQuery(parseFilters({ sub: "mujer" }), NOW)).has("subcat")).toBe(false);
+  });
+});
+
 describe("sin repetidos entre bloques y tiendas", () => {
   it("el listado puede excluir lo que ya muestra el carrusel", () => {
     const q = params(buildListQuery(DEFAULT_FILTERS, NOW, 24, ["falabella:1", "sodimac:2"]));

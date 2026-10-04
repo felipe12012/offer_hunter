@@ -1,3 +1,5 @@
+import { GROUP_LABELS, SUBCATEGORIES } from "./taxonomy";
+
 const CLP = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
 
 export function clp(amount: number): string {
@@ -62,19 +64,12 @@ export function storeName(slug: string): string {
   return STORE_NAMES[slug] ?? slug.charAt(0).toUpperCase() + slug.slice(1);
 }
 
-const GROUP_NAMES: Record<string, string> = {
-  tecnologia: "Tecnología",
-  muebles: "Muebles",
-  zapatillas: "Zapatillas",
-  ropa: "Ropa",
-  belleza: "Belleza",
-  mascotas: "Mascotas",
-  herramientas: "Herramientas",
-  otros: "Otros",
-};
-
 export function groupName(slug: string): string {
-  return GROUP_NAMES[slug] ?? slug;
+  return GROUP_LABELS[slug] ?? slug;
+}
+
+export function subName(group: string, sub: string): string {
+  return SUBCATEGORIES[group]?.[sub] ?? sub;
 }
 
 /** Una oferta que no se ve desde hace más de `hours` ya no está a la venta. */
