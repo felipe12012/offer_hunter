@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { DealGrid } from "@/components/DealCard";
 import { DiscountTag, VerifiedStamp } from "@/components/DiscountTag";
 import { PriceChart } from "@/components/PriceChart";
-import { getHistory, getProduct, getRelated } from "@/lib/data";
+import { getHistory, getProduct, getRelated, getSiblings } from "@/lib/data";
 import { explainDeal } from "@/lib/explain";
 import { agoFrom, clp, groupName, isStale, storeName } from "@/lib/format";
 import { dealView } from "@/lib/tiers";
@@ -46,7 +46,7 @@ export default async function ProductPage({ params }: { params: Params }) {
     );
   }
 
-  const [history, related] = await Promise.all([getHistory(row), getRelated(row)]);
+  const [history, related, siblings] = await Promise.all([getHistory(row), getRelated(row), getSiblings(row)]);
   const view = dealView(row);
   const reasons = explainDeal(row);
   const hasList = row.list_price > row.price;
@@ -98,6 +98,40 @@ export default async function ProductPage({ params }: { params: Params }) {
           <p className="mt-2 max-w-md text-sm text-muted">
             Se abre la tienda en otra pestaña. Confirma el precio ahí antes de comprar.
           </p>
+
+          {siblings.length > 0 ? (
+            <section aria-labelledby="titulo-otras" className="mt-8 border-t border-line pt-6">
+              <h2 id="titulo-otras" className="font-display text-2xl font-semibold">
+                También en otra tienda
+              </h2>
+              <p className="mt-1 text-sm text-muted">Mismo código de producto, publicado por otra tienda de la cadena.</p>
+              <ul className="mt-3 flex max-w-xl flex-col gap-2">
+                {siblings.map((other) => (
+                  <li key={other.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border border-line bg-surface px-3 py-2">
+                    <span>
+                      <span className="font-medium">{storeName(other.store)}</span>{" "}
+                      <span className="price text-xl">{clp(other.price)}</span>
+                      {other.price < row.price ? (
+                        <span className="ml-2 text-sm font-semibold text-verified">{clp(row.price - other.price)} más barato</span>
+                      ) : other.price > row.price ? (
+                        <span className="ml-2 text-sm text-muted">{clp(other.price - row.price)} más caro</span>
+                      ) : (
+                        <span className="ml-2 text-sm text-muted">mismo precio</span>
+                      )}
+                    </span>
+                    <a
+                      href={other.url}
+                      target="_blank"
+                      rel="noopener noreferrer nofollow"
+                      className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4"
+                    >
+                      Ver en {storeName(other.store)}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
           <section aria-labelledby="titulo-real" className="mt-8 border-t border-line pt-6">
             <h2 id="titulo-real" className="font-display text-2xl font-semibold">

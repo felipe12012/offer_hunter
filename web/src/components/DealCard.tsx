@@ -54,7 +54,7 @@ export function DealCard({ row, priority = false }: { row: FeedRow; priority?: b
               </s>
             ) : null}
           </p>
-          {hasList && row.saving > 0 ? <p className="mt-1 text-sm">Ahorras {clp(row.saving)}</p> : null}
+          {hasList && row.saving > 0 ? <p className="mt-1 hidden text-sm sm:block">Ahorras {clp(row.saving)}</p> : null}
         </div>
 
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">

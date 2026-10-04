@@ -31,11 +31,20 @@ export function freshSince(now: number = Date.now()): string {
   return new Date(rounded).toISOString();
 }
 
-export function buildListQuery(filters: Filters, now: number = Date.now(), pageSize: number = PAGE_SIZE): string {
+/** `excludeIds`: productos que la página ya muestra en otro bloque (el carrusel), para no repetirlos en el listado. */
+export function buildListQuery(
+  filters: Filters,
+  now: number = Date.now(),
+  pageSize: number = PAGE_SIZE,
+  excludeIds: string[] = [],
+): string {
   const params = new URLSearchParams();
   params.set("select", LIST_COLUMNS);
   params.set("last_seen_at", `gte.${freshSince(now)}`);
   params.set("dup_rank", "eq.1"); // Falabella y Sodimac comparten catálogo: una sola vez
+
+  const excluded = excludeIds.filter(isValidProductId);
+  if (excluded.length) params.set("id", `not.in.(${excluded.join(",")})`);
 
   if (filters.cat) params.set("category_group", `eq.${filters.cat}`);
   if (filters.stores.length) params.set("store", `in.(${filters.stores.join(",")})`);
@@ -83,6 +92,20 @@ export function buildProductQuery(id: string): string {
   params.set("select", DETAIL_COLUMNS);
   params.set("id", `eq.${id}`);
   params.set("limit", "1");
+  return params.toString();
+}
+
+/** Falabella y Sodimac comparten catálogo: el mismo código es el mismo producto en las dos tiendas.
+ *  Devuelve la consulta de la(s) otra(s) publicación(es) o null si el producto no tiene gemelas. */
+export function buildSiblingsQuery(id: string, now: number = Date.now()): string | null {
+  const [store, sku] = id.split(":");
+  if ((store !== "falabella" && store !== "sodimac") || !sku || !isValidProductId(id)) return null;
+  const params = new URLSearchParams();
+  params.set("select", LIST_COLUMNS);
+  params.set("last_seen_at", `gte.${freshSince(now)}`);
+  params.append("id", `in.(falabella:${sku},sodimac:${sku})`);
+  params.append("id", `neq.${id}`);
+  params.set("order", "price.asc");
   return params.toString();
 }
 

@@ -6,6 +6,7 @@ import {
   buildListQuery,
   buildProductQuery,
   buildRelatedQuery,
+  buildSiblingsQuery,
   buildSuperQuery,
   freshSince,
   isValidProductId,
@@ -114,6 +115,30 @@ describe("otras consultas", () => {
     const p = params(buildRelatedQuery("ropa", "falabella:1", NOW));
     expect(p.get("category_group")).toBe("eq.ropa");
     expect(p.get("id")).toBe("neq.falabella:1");
+  });
+});
+
+describe("sin repetidos entre bloques y tiendas", () => {
+  it("el listado puede excluir lo que ya muestra el carrusel", () => {
+    const q = params(buildListQuery(DEFAULT_FILTERS, NOW, 24, ["falabella:1", "sodimac:2"]));
+    expect(q.get("id")).toBe("not.in.(falabella:1,sodimac:2)");
+  });
+
+  it("solo se excluyen ids con forma válida (nada se cuela en la consulta)", () => {
+    const q = params(buildListQuery(DEFAULT_FILTERS, NOW, 24, ["falabella:1", "x),(or=1", "otro"]));
+    expect(q.get("id")).toBe("not.in.(falabella:1)");
+  });
+
+  it("sin exclusiones no hay filtro por id", () => {
+    expect(params(buildListQuery(DEFAULT_FILTERS, NOW)).has("id")).toBe(false);
+  });
+
+  it("gemela: Falabella y Sodimac comparten código; las demás tiendas no tienen", () => {
+    const q = params(buildSiblingsQuery("falabella:80726514", NOW) ?? "");
+    expect(q.getAll("id")).toEqual(["in.(falabella:80726514,sodimac:80726514)", "neq.falabella:80726514"]);
+    expect(q.get("order")).toBe("price.asc");
+    expect(buildSiblingsQuery("hites:123", NOW)).toBeNull();
+    expect(buildSiblingsQuery("falabella:bad id", NOW)).toBeNull();
   });
 });
 

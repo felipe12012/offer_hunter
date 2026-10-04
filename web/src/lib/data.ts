@@ -11,6 +11,7 @@ import {
   buildListQuery,
   buildProductQuery,
   buildRelatedQuery,
+  buildSiblingsQuery,
   buildSuperQuery,
   isValidProductId,
 } from "./query";
@@ -76,14 +77,14 @@ function fixtureStats(): FeedStats {
 
 // ---------- consultas ----------
 
-export async function getFeed(filters: Filters): Promise<{ rows: FeedRow[]; total: number }> {
+export async function getFeed(filters: Filters, excludeIds: string[] = []): Promise<{ rows: FeedRow[]; total: number }> {
   if (fixtureMode()) {
-    const all = fixtureFilter(filters);
+    const all = fixtureFilter(filters).filter((row) => !excludeIds.includes(row.id));
     const start = (filters.page - 1) * PAGE_SIZE;
     return { rows: all.slice(start, start + PAGE_SIZE), total: all.length };
   }
   requireCredentials();
-  const { rows, total } = await rest<FeedRow[]>(`offer_feed?${buildListQuery(filters)}`, {
+  const { rows, total } = await rest<FeedRow[]>(`offer_feed?${buildListQuery(filters, Date.now(), PAGE_SIZE, excludeIds)}`, {
     count: true,
     revalidate: REVALIDATE_SECONDS,
   });
@@ -129,6 +130,16 @@ export async function getHistory(row: FeedRow): Promise<PricePoint[]> {
   const { rows } = await rest<PricePoint[]>(`offer_price_points?${buildHistoryQuery(row.id)}`, {
     revalidate: REVALIDATE_SECONDS,
   });
+  return rows;
+}
+
+/** La misma publicación en otra tienda de la cadena (mismo código), con su precio. */
+export async function getSiblings(row: FeedRow): Promise<FeedRow[]> {
+  const query = buildSiblingsQuery(row.id);
+  if (!query) return [];
+  if (fixtureMode()) return [];
+  requireCredentials();
+  const { rows } = await rest<FeedRow[]>(`offer_feed?${query}`, { revalidate: REVALIDATE_SECONDS });
   return rows;
 }
 

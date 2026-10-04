@@ -13,7 +13,7 @@ const OPTIONS: { value: Sort; label: string }[] = [
 
 export function SortBar({ filters }: { filters: Filters }) {
   return (
-    <nav aria-label="Ordenar por" className="flex flex-wrap gap-x-1 gap-y-1">
+    <nav aria-label="Ordenar por" className="-mx-4 flex max-w-[100vw] gap-x-1 overflow-x-auto px-4 sm:mx-0 sm:max-w-none sm:flex-wrap sm:overflow-visible sm:px-0">
       {OPTIONS.map((option) => {
         const active = filters.sort === option.value;
         return (
@@ -21,7 +21,7 @@ export function SortBar({ filters }: { filters: Filters }) {
             key={option.value}
             href={filtersHref(filters, { sort: option.value })}
             aria-current={active ? "true" : undefined}
-            className={`inline-flex min-h-11 items-center px-2.5 text-sm ${active ? "bg-ink font-semibold text-paper" : "text-muted hover:text-ink hover:underline"}`}
+            className={`inline-flex min-h-11 shrink-0 items-center whitespace-nowrap px-2.5 text-sm ${active ? "bg-ink font-semibold text-paper" : "text-muted hover:text-ink hover:underline"}`}
           >
             {option.label}
           </Link>
