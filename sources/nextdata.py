@@ -35,6 +35,7 @@ DEFAULT_MAX_SEARCH_PAGES = 3
 DEFAULT_MAX_CATEGORY_PAGES = 4
 DEFAULT_MAX_CATEGORIES = 40
 WORKERS = 4
+MAX_WORKERS = 12  # a cap on what the watchlist may ask for: more is a way to get blocked
 
 _NEXT_DATA = re.compile(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S)
 
@@ -258,7 +259,10 @@ def fetch_store_deals(
         progress.publish(cfg.store, found, merge=_merge_hint)
         return found, None
 
-    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+    # Requests are mostly waiting on the network (measured: 503 pages, 1,040 s of waiting, ~260 s wall time
+    # with 4 workers), so more workers shorten the scan; the watchlist sets how many (scan.nextdata_workers).
+    workers = max(1, min(int(scan.get("nextdata_workers", WORKERS)), MAX_WORKERS))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         outcomes = list(pool.map(run, jobs))
 
     deals: dict[str, Deal] = {}

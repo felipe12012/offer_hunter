@@ -114,7 +114,8 @@
       "ropa-deportiva-mujer",
       "ropa-deportiva-hombre"
     ],
-    "deep_pages": 10
+    "deep_pages": 10,
+    "nextdata_workers": 6
   },
   "alerts": {
     "tiers": [

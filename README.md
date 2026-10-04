@@ -135,6 +135,7 @@ cuando falla.
 | `priority.max_per_run`, `priority.daily_cap` | Cupo propio de prioritarios **no verificados**: 30 por run y 800 por día (aparte del cupo genérico de 15 por run y 300 por día). Se reparten entre los intereses |
 | `scan.deep_slugs`, `scan.deep_pages` | Categorías de tienda que se leen más a fondo (10 páginas en vez de 4) por ser de interés prioritario |
 | `scan.max_search_pages` | Páginas por búsqueda en Falabella/Sodimac (3) |
+| `scan.nextdata_workers` | Páginas que Falabella y Sodimac leen a la vez (6; máx. 12). Casi todo el tiempo es espera de red, así que más hilos acortan el escaneo; si una tienda empieza a dar errores o a bloquear, bájalo (el log "HTTP by host" muestra errores y latencias) |
 | `scan.max_category_pages` | Páginas por categoría (4; son 48 productos por página) |
 | `scan.max_categories` | Tope de categorías descubiertas por tienda (80) |
 | `scan.category_patterns` | `{grupo: [fragmentos de nombre de categoría]}`. El grupo pasa a ser la categoría del producto |

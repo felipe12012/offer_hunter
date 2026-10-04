@@ -224,3 +224,35 @@ def test_a_stopped_scan_reads_no_more_pages():
 
     deals = nextdata.scan_listing("https://www.falabella.com/x", CFG, "cat", 5, fetch=fetch, sleep=lambda s: None)
     assert calls == [] and deals == []
+
+
+# ---- how many pages are read at the same time -----------------------------------------------------
+
+def _workers_used(monkeypatch, scan_config):
+    seen = {}
+    real = nextdata.ThreadPoolExecutor
+
+    class Recording(real):
+        def __init__(self, max_workers=None, *args, **kwargs):
+            seen["workers"] = max_workers
+            super().__init__(max_workers=max_workers, *args, **kwargs)
+
+    monkeypatch.setattr(nextdata, "ThreadPoolExecutor", Recording)
+    watchlist = {**WATCHLIST, "scan": {**WATCHLIST["scan"], **scan_config}}
+    nextdata.fetch_store_deals(
+        CFG, watchlist, fetch=lambda url: page_with([1]), fetch_home=lambda url: HOME, sleep=lambda s: None
+    )
+    return seen["workers"]
+
+
+def test_the_watchlist_sets_how_many_pages_are_read_at_once(monkeypatch):
+    assert _workers_used(monkeypatch, {"nextdata_workers": 6}) == 6
+
+
+def test_without_a_setting_the_default_is_kept(monkeypatch):
+    assert _workers_used(monkeypatch, {}) == nextdata.WORKERS
+
+
+def test_the_setting_is_clamped(monkeypatch):
+    assert _workers_used(monkeypatch, {"nextdata_workers": 500}) == nextdata.MAX_WORKERS
+    assert _workers_used(monkeypatch, {"nextdata_workers": 0}) == 1
