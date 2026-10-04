@@ -31,3 +31,6 @@ class ScoredDeal:
     advertised_confirmed: bool = True
     # Label of the priority interest this offer matches (see priority.py), or None.
     priority: str | None = None
+    # Why this looks like a pricing mistake (see price_error.py), or None. These are announced
+    # first, to the alert chat, outside the daily quotas.
+    price_error: str | None = None

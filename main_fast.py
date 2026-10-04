@@ -6,6 +6,7 @@ import time
 import traceback
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, wait
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from dedup import deal_key, load_seen, mark_seen
 from models import Deal, ScoredDeal
 import notifier
 from notifier import MAX_PRIORITY_UNVERIFIED_PER_RUN, send_alert, send_offers
+from price_error import as_scored, find_price_errors
 from sources import httpclient, progress
 from subscribers import process_updates
 from price_history import load_price_history, save_price_history, update_price_history
@@ -532,12 +534,18 @@ def run() -> int:
     candidates: list[ScoredDeal] = []
     new_keys: list[str] = []
     unverified = 0
+    # Possible pricing mistakes are looked for in everything this scan read, not only in what the
+    # watchlist would have picked, and against the history from BEFORE this scan.
+    price_errors = find_price_errors(deals, history)
     for deal in deals:
         key = deal_key(deal)
         already_seen = key in seen_keys
         # Evaluate against history BEFORE this run's own snapshot is recorded,
         # so a price drop compares against prior runs, not against itself.
         scored = None if already_seen else evaluate(deal, watchlist, history)
+        if not already_seen and deal.id in price_errors:
+            reason, drop = price_errors[deal.id]
+            scored = replace(scored, price_error=reason) if scored else as_scored(deal, reason, drop)
         if not already_seen and scored is None and evaluate(deal, unverified_watchlist, history):
             unverified += 1
         update_price_history(history, deal)

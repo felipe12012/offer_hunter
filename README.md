@@ -184,6 +184,13 @@ antes se agotaba en las primeras horas y el resto del día no llegaba nada. Las 
   pipeline lee los mensajes pendientes del bot (`getUpdates`) y responde, así que la bienvenida
   llega en un máximo de ~15 min. Requiere `SUPABASE_URL`/`SUPABASE_SERVICE_KEY`. Si el bot tuviera
   un webhook configurado, `getUpdates` no funciona: no lo configures.
+- **Posibles errores de precio** (`price_error.py`): se buscan en todo lo que lee el escaneo, aunque la
+  lista de intereses no lo habría elegido. Se marca cuando el precio es ≤ 20 % del último precio visto o del
+  mínimo histórico (bajada de 80 % o más), o ≤ 50 % del precio del mismo código en la tienda gemela
+  (Falabella/Sodimac). No cuentan productos que valían menos de $15.000 antes, ni una campaña (5 o más
+  productos de una tienda que bajan el mismo porcentaje: eso es una liquidación, no un error). La alerta
+  "🚨⚠️ POSIBLE ERROR DE PRECIO" va primero, al chat de alertas y a los suscriptores, fuera de las cuotas
+  diarias (máx. 20 por run; el resto espera al siguiente).
 - **Canal público** (`TELEGRAM_PUBLIC_CHAT_ID`): recibe una copia de cada oferta, para seguirlas sin bot.
 - Si Telegram no puede bajar la foto desde la URL, el programa la descarga y la sube; si tampoco, el
   mensaje sale sin foto. **Nunca se pierde una oferta por una imagen.**

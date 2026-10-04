@@ -30,6 +30,8 @@ MAX_UNVERIFIED_PER_RUN = 30
 # Priority interests (watchlist "priority") have their own quota for unconfirmed
 # discounts, on top of the generic one, so they never compete with it.
 MAX_PRIORITY_UNVERIFIED_PER_RUN = 40
+# Possible pricing mistakes are announced first and outside every quota above, but not without limit.
+MAX_PRICE_ERRORS_PER_RUN = 20
 # A verified discount at or above this always goes first, priority or not.
 BIG_VERIFIED_PCT = 60
 MAX_CAPTION_LENGTH = 1024
@@ -83,11 +85,12 @@ def _rank_key(scored: ScoredDeal) -> float:
     return max(scored.real_discount_pct, scored.deal.discount_pct)
 
 
-def _order_key(scored: ScoredDeal) -> tuple[bool, bool, float, float]:
+def _order_key(scored: ScoredDeal) -> tuple[bool, bool, bool, float, float]:
     """Sort key, best first: a big verified discount, then priority interests, then
     the verified discount; the store's own percentage is only a tie-break (so
     unverified offers rank below every verified one of the same kind)."""
     return (
+        bool(scored.price_error),
         _rank_key(scored) >= BIG_VERIFIED_PCT,
         bool(scored.priority),
         _rank_key(scored),
@@ -122,7 +125,9 @@ def format_offer(
     title = deal.title if len(deal.title) <= max_title else deal.title[: max_title - 1] + "…"
 
     label = _tier_label(scored, config)
-    if label:
+    if scored.price_error:
+        lines = ["🚨⚠️ <b>POSIBLE ERROR DE PRECIO</b>", f"<b>{html.escape(title)}</b>"]
+    elif label:
         lines = [f"{html.escape(label)} -{_rank_key(scored):.0f}%", f"<b>{html.escape(title)}</b>"]
     else:
         lines = [f"🔥 <b>{html.escape(title)}</b>"]
@@ -132,6 +137,16 @@ def format_offer(
 
     price_line = f"💰 <b>{_format_clp(deal.price)}</b>"
     unconfirmed_claim = not scored.advertised_confirmed and deal.discount_pct > 0
+    if scored.price_error:
+        lines.append(price_line)
+        lines.append(f"📉 {html.escape(scored.price_error[:200])}")
+        lines.append(
+            "⚠️ Las tiendas suelen cancelar las compras con precio equivocado. Verifica en la tienda; "
+            "si compras, es bajo tu responsabilidad."
+        )
+        if include_link:
+            lines.append(f'🔗 <a href="{html.escape(deal.url, quote=True)}">Ver oferta</a>')
+        return "\n".join(lines)
     if not unconfirmed_claim:
         if deal.list_price > deal.price:
             price_line += f"  <s>{_format_clp(deal.list_price)}</s>"
@@ -400,9 +415,15 @@ def send_offers(
     alert_min = _alerts(alerts)["alert_chat_min_pct"]
     public_chat_id = public_chat_id or os.environ.get("TELEGRAM_PUBLIC_CHAT_ID") or None
 
-    verified = [scored for scored in scored_deals if scored.advertised_confirmed]
-    priority_unverified = [s for s in scored_deals if not s.advertised_confirmed and s.priority]
-    other_unverified = [s for s in scored_deals if not s.advertised_confirmed and not s.priority]
+    # Possible pricing mistakes first and outside every quota (but capped): the biggest drops win.
+    mistakes = sorted(
+        (s for s in scored_deals if s.price_error), key=lambda s: _rank_key(s), reverse=True
+    )[:MAX_PRICE_ERRORS_PER_RUN]
+    regular = [s for s in scored_deals if not s.price_error]
+
+    verified = [scored for scored in regular if scored.advertised_confirmed]
+    priority_unverified = [s for s in regular if not s.advertised_confirmed and s.priority]
+    other_unverified = [s for s in regular if not s.advertised_confirmed and not s.priority]
 
     ordered = _round_robin_by_category(_dedupe_by_title(verified), MAX_MESSAGES_PER_RUN)
     room = MAX_MESSAGES_PER_RUN - len(ordered)
@@ -424,6 +445,7 @@ def send_offers(
     # category interleaving chosen above is kept for everything else (and inside the
     # priority group).
     ordered.sort(key=lambda scored: not scored.priority)
+    ordered = mistakes + ordered
 
     delivered: list[ScoredDeal] = []
     photo_messages = 0
@@ -434,7 +456,7 @@ def send_offers(
 
         result = ""
         sent_to = chat_id
-        if alert_chat_id and _rank_key(scored) >= alert_min:
+        if alert_chat_id and (scored.price_error or _rank_key(scored) >= alert_min):
             result = _send_one(scored, bot_token, alert_chat_id, alerts, thread_id, allow_silent=False)
             if result:
                 sent_to = alert_chat_id
@@ -481,7 +503,7 @@ def _send_to_subscribers(
     priority interests and big discounts, best first, at most MAX_SUBSCRIBER_MESSAGES_PER_RUN."""
     worth_sending = [
         scored for scored in delivered
-        if scored.advertised_confirmed or scored.priority or _rank_key(scored) >= alert_min
+        if scored.price_error or scored.advertised_confirmed or scored.priority or _rank_key(scored) >= alert_min
     ]
     worth_sending.sort(key=_order_key, reverse=True)
     worth_sending = worth_sending[:MAX_SUBSCRIBER_MESSAGES_PER_RUN]
