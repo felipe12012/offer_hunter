@@ -456,7 +456,10 @@ def classify(title: str, category: str = "", store: str = "") -> tuple[str, str]
         return "mascotas", "otras"
 
     # Footwear.
-    if _FOOT.search(t) or (store in _SHOE_BRAND_STORES and not _CLOTHES.search(t)):
+    shoe_store_default = (
+        store in _SHOE_BRAND_STORES and not _CLOTHES.search(t) and _first(t, _ACCESSORY_RULES) is None
+    )
+    if _FOOT.search(t) or shoe_store_default:
         if _FOOT_ACCESSORY.search(t):
             return "zapatillas", "accesorios"
         return "zapatillas", _audience(t)

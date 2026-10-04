@@ -40,6 +40,8 @@ CASES = [
     ("Fórmula Infantil Nan Prematuros 400 g", "alimento perro", "ahumada", ("bebes", "cuidado")),
     ("Silla Plegable De Playa Camping Pesca", "muebles", "sodimac", ("deportes", "camping")),
     ("Mochila Escolar 20 Litros", "", "falabella", ("accesorios", "bolsos")),
+    ("Cartera Ecocuero Mujer Bratt Tote Negro Hush Puppies", "zapatillas", "hushpuppies", ("accesorios", "bolsos")),
+    ("Slip On Cuero Hombre Jenson Café", "zapatillas", "hushpuppies", ("zapatillas", "hombre")),
 ]
 
 
