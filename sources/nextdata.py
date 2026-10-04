@@ -18,7 +18,7 @@ from urllib.parse import parse_qsl, quote, urlencode, urljoin, urlsplit, urlunsp
 import requests
 
 from models import Deal
-from sources import health
+from sources import health, httpclient, progress
 
 HEADERS = {
     "User-Agent": (
@@ -29,7 +29,7 @@ HEADERS = {
     "Accept-Language": "es-CL,es;q=0.9,en;q=0.8",
 }
 REQUEST_DELAY_SECONDS = 0.3
-REQUEST_TIMEOUT_SECONDS = 30
+REQUEST_TIMEOUT_SECONDS = httpclient.DEFAULT_TIMEOUT_SECONDS
 FETCH_ATTEMPTS = 3
 DEFAULT_MAX_SEARCH_PAGES = 3
 DEFAULT_MAX_CATEGORY_PAGES = 4
@@ -58,7 +58,7 @@ def fetch_html(url: str) -> str:
     last_error: Exception | None = None
     for attempt in range(FETCH_ATTEMPTS):
         try:
-            response = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT_SECONDS)
+            response = httpclient.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT_SECONDS)
             response.raise_for_status()
             return response.text
         except requests.RequestException as exc:
@@ -158,6 +158,8 @@ def scan_listing(
     deals: dict[str, Deal] = {}
     page_url = start_url
     for page in range(1, max_pages + 1):
+        if progress.stopped():
+            break  # the run gave up on this store: do not keep reading pages nobody is waiting for
         if page > 1:
             sleep(REQUEST_DELAY_SECONDS)
         props = fetch(page_url if page == 1 else with_page(page_url, page))
@@ -234,7 +236,9 @@ def fetch_store_deals(
         except Exception as exc:
             health.warn(cfg.store, f"{cfg.store} category discovery failed: {exc}")
             categories = []
-        for group, category_id, slug in categories:
+        # Priority (deep) categories go first: if the run runs out of time, the partial result
+        # holds what matters most. sorted() is stable, so the menu order is kept inside each class.
+        for group, category_id, slug in sorted(categories, key=lambda c: c[2].lower() not in deep_slugs):
             # Priority categories are read deeper; the slug travels as a hint so a
             # "Moda Mujer" product is recognised as women's clothing even when its
             # title never says so.
@@ -247,9 +251,12 @@ def fetch_store_deals(
     def run(job):
         label, url, pages, hint = job
         try:
-            return scan_listing(url, cfg, label, pages, fetch=fetch, sleep=sleep, hint=hint), None
+            found = scan_listing(url, cfg, label, pages, fetch=fetch, sleep=sleep, hint=hint)
         except Exception as exc:
             return [], f"{cfg.store} scan of {url} failed: {exc}"
+        # Publish as each job finishes: if the store overruns its time, these survive.
+        progress.publish(cfg.store, found, merge=_merge_hint)
+        return found, None
 
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         outcomes = list(pool.map(run, jobs))

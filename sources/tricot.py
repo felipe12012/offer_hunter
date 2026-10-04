@@ -16,6 +16,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from models import Deal
+from sources import httpclient
 from sources.images import pick_image
 from sources.health import NoResultsError
 from sources.sfcc import is_empty_fragment, run_queries
@@ -136,7 +137,7 @@ def fetch_html(keyword: str, start: int = 0) -> str:
     last_error: Exception | None = None
     for attempt in range(3):
         try:
-            response = requests.get(url, headers=REQUEST_HEADERS, timeout=30)
+            response = httpclient.get(url, headers=REQUEST_HEADERS)
             response.raise_for_status()
             return response.text
         except requests.RequestException as exc:

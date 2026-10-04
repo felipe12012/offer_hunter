@@ -16,6 +16,7 @@ from dedup import deal_key, load_seen, mark_seen
 from models import Deal, ScoredDeal
 import notifier
 from notifier import MAX_PRIORITY_UNVERIFIED_PER_RUN, send_alert, send_offers
+from sources import httpclient, progress
 from subscribers import process_updates
 from price_history import load_price_history, save_price_history, update_price_history
 from reports import StoreReport, build_report, format_log, store_transitions, to_json, to_markdown
@@ -232,6 +233,8 @@ def scan_stores(watchlist: dict) -> tuple[list[Deal], list[StoreReport]]:
         raise RuntimeError("Every store is disabled in config/watchlist.json")
 
     health.drain()  # discard events left over from anything that ran before this scan
+    progress.reset()
+    httpclient.reset_stats()
 
     def run_source(source):
         name, fetch = source
@@ -247,6 +250,7 @@ def scan_stores(watchlist: dict) -> tuple[list[Deal], list[StoreReport]]:
     executor = ThreadPoolExecutor(max_workers=len(source_fetchers))
     futures = {executor.submit(run_source, source): source[0] for source in source_fetchers}
     done, pending = wait(futures, timeout=SOURCE_TIMEOUT_SECONDS)
+    progress.stop()  # stores still running wind down instead of finishing a scan nobody waits for
     events = health.drain()
 
     def store_events(store: str) -> list[dict]:
@@ -263,12 +267,19 @@ def scan_stores(watchlist: dict) -> tuple[list[Deal], list[StoreReport]]:
         deals.extend(found)
         by_store[name] = build_report(name, len(found), seconds, store_events(name), raised=error)
     for future in pending:
-        failures += 1
         future.cancel()
         name = futures[future]
-        print(f"{name} scraper timed out after {SOURCE_TIMEOUT_SECONDS}s", file=sys.stderr)
+        # What the store had read when time ran out is still worth having: before, the whole
+        # store was lost (Falabella: ~18,000 products in each of 4 scans).
+        partial = progress.take(name)
+        if partial:
+            print(f"{name} scraper timed out after {SOURCE_TIMEOUT_SECONDS}s; keeping the {len(partial)} products it had read", file=sys.stderr)
+            deals.extend(partial)
+        else:
+            failures += 1
+            print(f"{name} scraper timed out after {SOURCE_TIMEOUT_SECONDS}s", file=sys.stderr)
         by_store[name] = build_report(
-            name, 0, SOURCE_TIMEOUT_SECONDS, store_events(name), timed_out=True
+            name, len(partial), SOURCE_TIMEOUT_SECONDS, store_events(name), timed_out=True
         )
     executor.shutdown(wait=False, cancel_futures=True)
 
@@ -508,6 +519,10 @@ def run() -> int:
         return record_failure(f"Scraper failed: {exc}", getattr(exc, "reports", None))
 
     print(format_log(reports), file=sys.stderr)
+    network = httpclient.format_summary()
+    if network:
+        print(network, file=sys.stderr)
+        write_step_summary(f"### Red\n\n{httpclient.to_markdown()}")
 
     history = load_price_history(HISTORY_PATH)
     seen_keys = load_seen(SEEN_PATH)

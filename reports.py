@@ -37,7 +37,8 @@ def build_report(
     empty_queries = sum(1 for e in events if e.get("kind") == "empty")
 
     if timed_out:
-        status = "timeout"
+        # Out of time but with something read: the store is working, just slowly.
+        status = "partial" if deals > 0 else "timeout"
     elif raised is not None:
         status = "failed"
     elif deals > 0:
@@ -50,6 +51,8 @@ def build_report(
     detail = ""
     if timed_out:
         detail = f"no terminó en {int(seconds)}s"
+        if deals > 0:
+            detail += f"; se usaron los {deals} productos que alcanzó a leer"
     elif raised is not None:
         detail = str(raised)
     elif status == "empty":
@@ -84,6 +87,8 @@ def to_json(reports: list[StoreReport]) -> dict:
 
 def _problem_text(report: StoreReport) -> str:
     if report.status == "partial":
+        if report.detail and not report.errors:
+            return _clip(report.detail)
         return f"{len(report.errors)} consulta(s) con error"
     if report.status in BAD_STATUSES:
         return _clip(report.detail or (report.errors[0] if report.errors else ""))

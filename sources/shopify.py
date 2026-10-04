@@ -20,6 +20,7 @@ from urllib.parse import urljoin
 import requests
 
 from models import Deal
+from sources import httpclient
 
 HEADERS = {
     "User-Agent": (
@@ -53,7 +54,7 @@ def fetch_products(base_url: str, page: int) -> list[dict]:
     last_error: Exception | None = None
     for attempt in range(FETCH_ATTEMPTS):
         try:
-            response = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT_SECONDS)
+            response = httpclient.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT_SECONDS)
             response.raise_for_status()
             return response.json().get("products", [])
         except Exception as exc:  # noqa: BLE001 - retried, then surfaced

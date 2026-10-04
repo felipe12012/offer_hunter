@@ -16,6 +16,7 @@ import requests
 
 from models import Deal
 from sources import health
+from sources import httpclient
 
 HEADERS = {
     "User-Agent": (
@@ -57,7 +58,7 @@ def fetch_page(base_url: str, keyword: str, start: int) -> list[dict]:
     last_error: Exception | None = None
     for attempt in range(FETCH_ATTEMPTS):
         try:
-            response = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT_SECONDS)
+            response = httpclient.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT_SECONDS)
             response.raise_for_status()
             data = response.json()
             return data if isinstance(data, list) else []
