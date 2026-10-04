@@ -162,7 +162,9 @@ WATCHLIST_PATH = Path(__file__).parent / "config" / "watchlist.json"
 RUN_STATUS_PATH = Path(os.environ.get("RUN_STATUS_FILE") or Path(__file__).parent / "run_status.txt")
 # A whole scan finishes in ~6 minutes; give any single store generous room but
 # stop waiting forever, so one hung store cannot stall the run or the lock.
-SOURCE_TIMEOUT_SECONDS = 420
+# Falabella (20k products, no partial result when it overruns) went from ~240 s to over 420 s on
+# 2026-10-04 and lost whole scans, so the ceiling is 10 minutes (the job itself allows 20).
+SOURCE_TIMEOUT_SECONDS = 600
 # Ceiling on unconfirmed advertised discounts sent per day (across all runs), on
 # top of the per-run cap in notifier. Resets at UTC midnight.
 DAILY_UNVERIFIED_CAP = 300
