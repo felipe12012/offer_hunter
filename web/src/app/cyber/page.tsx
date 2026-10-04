@@ -30,9 +30,10 @@ export default async function CyberPage() {
           Posibles errores de precio
         </h2>
         <p className="mt-2 max-w-2xl">
-          Un precio que cae un 80 % o más frente a lo que vimos antes, o que cuesta menos de la mitad que el mismo producto
-          en la tienda hermana. <strong>Las tiendas suelen cancelar las compras con precio equivocado</strong>: confirma en
-          la tienda antes de contar con él.
+          Un precio que parece tener un cero de menos (por ejemplo $150.000 que aparece como $15.000), que cae un 85 % o más
+          frente a lo que vimos antes, o que cuesta una quinta parte del mismo producto en la tienda hermana. Un descuento
+          de 50 % o 70 % es una oferta, no un error. <strong>Las tiendas suelen cancelar las compras con precio equivocado</strong>:
+          confirma en la tienda antes de contar con él.
         </p>
         <div className="mt-5">
           {mistakes.length > 0 ? (

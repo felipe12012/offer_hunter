@@ -1,16 +1,18 @@
-"""Possible pricing mistakes: prices that fell far more than any sale does.
+"""Possible pricing mistakes: prices that are wrong by far more than any sale makes them.
 
-A store's own "was $X" proves nothing (it is the thing a sale inflates), so the signals are the ones
-we can see ourselves:
+A store's own "was $X" proves nothing (it is the thing a sale inflates), so the signals are the ones we
+can see ourselves, against prices we or the sister store actually showed:
 
-* the price is at most 20 % of what we last saw it at, or of the lowest price we ever saw
-  (a drop of 80 % or more in one step);
-* Falabella and Sodimac share one catalogue: the same product costs less than half in one of them.
+* **a missing digit**: the price is about 1/10 (or 1/100) of a price we saw it at, or of the same product
+  in the sister store: $150,000 typed as $15,000. A 50 % or 70 % discount is a sale, not this;
+* **an extreme drop**: at most 15 % of what we last saw it at, or of the lowest price we ever saw
+  (85 % or more off in one step);
+* **an extreme gap with the sister store**: Falabella and Sodimac share one catalogue and one of them
+  charges at most 20 % of the other's price.
 
-Two guards keep ordinary sales out. A product has to have been worth a minimum before the drop
-(an item that fell from $4,000 to $500 is not worth an alert), and a *campaign* is not a mistake: when
-many products of one store drop by the same percentage in the same scan (a brand's "70 % off everything"),
-nobody mispriced anything.
+Guards keep ordinary sales out. A product has to have been worth a minimum (an item that fell from $4,000 to
+$500 is not worth an alert), and a *campaign* is not a mistake: when many products of one store drop by the
+same percentage in the same scan (a brand's "85 % off everything"), nobody mispriced anything.
 
 Pure functions: no network, no files.
 """
@@ -21,12 +23,16 @@ from collections import Counter
 
 from models import Deal, ScoredDeal
 
-# At most this share of the previous price (0.2 = a drop of 80 % or more).
-MAX_PRICE_SHARE = 0.20
+# At most this share of the previous price (0.15 = a drop of 85 % or more).
+MAX_PRICE_SHARE = 0.15
 # At most this share of the sister store's price for the same SKU.
-MAX_CROSS_STORE_SHARE = 0.50
+MAX_CROSS_STORE_SHARE = 0.20
 # The product has to have been worth at least this before for the drop to matter (CLP).
 MIN_REFERENCE_PRICE = 15_000
+# A missing digit: price x factor lands within this tolerance of a reference price. The reference
+# has to be big enough for the typo to matter ($150,000 -> $15,000, not $400 -> $40).
+DIGIT_SLIP_TOLERANCE = 0.05
+DIGIT_SLIPS = ((10, 30_000), (100, 100_000))  # (factor, smallest reference price)
 # This many products of a store dropping by the same percentage is a sale, not a mistake.
 CAMPAIGN_SIZE = 5
 # Falabella and Sodimac list the same SKUs.
@@ -54,6 +60,14 @@ def _history_reference(deal: Deal, history: dict) -> tuple[int, str] | None:
     if not candidates:
         return None
     return max(candidates, key=lambda c: c[0])
+
+
+def _digit_slip(price: int, reference: int) -> int | None:
+    """10 or 100 when ``price`` is that many times smaller than ``reference`` (give or take 5 %)."""
+    for factor, smallest in DIGIT_SLIPS:
+        if reference >= smallest and abs(price * factor - reference) <= reference * DIGIT_SLIP_TOLERANCE:
+            return factor
+    return None
 
 
 def _campaign_drops(deals: list[Deal], history: dict) -> set[tuple[str, int]]:
@@ -87,6 +101,23 @@ def as_scored(deal: Deal, reason: str, drop: float) -> ScoredDeal:
     )
 
 
+def _slip_reason(deal: Deal, history: dict, sister: tuple[str, int] | None) -> tuple[str, float] | None:
+    """A missing digit against a price we saw this product at, or the sister store's price."""
+    references = [(p, "un precio que vimos") for p in sorted({s["price"] for s in history.get(deal.id) or []}, reverse=True)]
+    if sister is not None:
+        references.append((sister[1], f"el precio en {sister[0].title()}"))
+    for reference, source in references:
+        factor = _digit_slip(deal.price, reference)
+        if factor is not None:
+            zeros = "un cero" if factor == 10 else "dos ceros"
+            return (
+                f"cuesta {_clp(deal.price)} y {source} es {_clp(reference)}: podría faltarle {zeros} "
+                f"(1/{factor} del precio)",
+                float(_drop_pct(reference, deal.price)),
+            )
+    return None
+
+
 def find_price_errors(deals: list[Deal], history: dict) -> dict[str, tuple[str, float]]:
     """Deal id -> (reason, percentage below the reference price). ``history`` must still be the one from
     before this scan (the scan's own prices not yet recorded)."""
@@ -95,32 +126,34 @@ def find_price_errors(deals: list[Deal], history: dict) -> dict[str, tuple[str, 
     found: dict[str, tuple[str, float]] = {}
 
     for deal in deals:
+        sister = None
+        if deal.store in SISTER_STORES:
+            other_store = SISTER_STORES[1 - SISTER_STORES.index(deal.store)]
+            other_price = sisters.get(deal.id.split(":", 1)[1], {}).get(other_store)
+            if other_price is not None and other_price >= MIN_REFERENCE_PRICE:
+                sister = (other_store, other_price)
+
+        slip = _slip_reason(deal, history, sister)
+        if slip is not None:
+            found[deal.id] = slip
+            continue
+
         reference = _history_reference(deal, history)
         if reference is not None:
             reference_price, label = reference
             drop = _drop_pct(reference_price, deal.price)
-            if (
-                deal.price <= reference_price * MAX_PRICE_SHARE
-                and (deal.store, drop) not in campaigns
-            ):
+            if deal.price <= reference_price * MAX_PRICE_SHARE and (deal.store, drop) not in campaigns:
                 found[deal.id] = (
                     f"bajó de {_clp(reference_price)} a {_clp(deal.price)} (-{drop}% vs {label})",
                     float(drop),
                 )
                 continue
 
-        if deal.store in SISTER_STORES:
-            other_store = SISTER_STORES[1 - SISTER_STORES.index(deal.store)]
-            other_price = sisters.get(deal.id.split(":", 1)[1], {}).get(other_store)
-            if (
-                other_price is not None
-                and other_price >= MIN_REFERENCE_PRICE
-                and deal.price <= other_price * MAX_CROSS_STORE_SHARE
-            ):
-                drop = _drop_pct(other_price, deal.price)
-                found[deal.id] = (
-                    f"cuesta {_clp(deal.price)} en {deal.store.title()} y {_clp(other_price)} en {other_store.title()} "
-                    f"(-{drop}% frente a la otra tienda)",
-                    float(drop),
-                )
+        if sister is not None and deal.price <= sister[1] * MAX_CROSS_STORE_SHARE:
+            drop = _drop_pct(sister[1], deal.price)
+            found[deal.id] = (
+                f"cuesta {_clp(deal.price)} en {deal.store.title()} y {_clp(sister[1])} en {sister[0].title()} "
+                f"(-{drop}% frente a la otra tienda)",
+                float(drop),
+            )
     return found

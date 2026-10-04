@@ -185,11 +185,13 @@ antes se agotaba en las primeras horas y el resto del día no llegaba nada. Las 
   llega en un máximo de ~15 min. Requiere `SUPABASE_URL`/`SUPABASE_SERVICE_KEY`. Si el bot tuviera
   un webhook configurado, `getUpdates` no funciona: no lo configures.
 - **Posibles errores de precio** (`price_error.py`): se buscan en todo lo que lee el escaneo, aunque la
-  lista de intereses no lo habría elegido. Se marca cuando el precio es ≤ 20 % del último precio visto o del
-  mínimo histórico (bajada de 80 % o más), o ≤ 50 % del precio del mismo código en la tienda gemela
-  (Falabella/Sodimac). No cuentan productos que valían menos de $15.000 antes, ni una campaña (5 o más
-  productos de una tienda que bajan el mismo porcentaje: eso es una liquidación, no un error). La alerta
-  "🚨⚠️ POSIBLE ERROR DE PRECIO" va primero, al chat de alertas y a los suscriptores, fuera de las cuotas
+  lista de intereses no lo habría elegido, y solo con señales **extremas** (un 50 % o 70 % de descuento es una
+  oferta, no un error): (1) **falta un dígito**: el precio es ~1/10 o ~1/100 de un precio que vimos (o del de la
+  tienda gemela): $150.000 escrito como $15.000; (2) **bajada de 85 % o más** frente al último precio visto o al
+  mínimo histórico; (3) la tienda gemela (Falabella/Sodimac) cobra **5 veces o más** por el mismo código. No
+  cuentan productos que valían menos de $15.000, ni el \"precio normal\" tachado de la tienda (no prueba nada), ni
+  una campaña (5 o más productos de una tienda que bajan el mismo porcentaje). La alerta
+  \"🚨⚠️ POSIBLE ERROR DE PRECIO\" va primero, al chat de alertas y a los suscriptores, fuera de las cuotas
   diarias (máx. 20 por run; el resto espera al siguiente).
 - **Escaneo caliente del Cyber** (`main_hot.py` + `.github/workflows/hot.yml`): cada ~10 minutos pide a
   Falabella y Sodimac solo los productos con **70 % de descuento o más** (un filtro que sus listados ofrecen)

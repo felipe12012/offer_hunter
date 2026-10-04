@@ -19,10 +19,10 @@ def history_of(*prices_by_id):
 
 # ---- detection ------------------------------------------------------------------------------------
 
-def test_a_drop_of_80_percent_or_more_from_the_last_price_is_flagged():
-    found = find_price_errors([deal("falabella:1", 20_000)], history_of(("falabella:1", [100_000])))
+def test_a_drop_of_85_percent_or_more_from_the_last_price_is_flagged():
+    found = find_price_errors([deal("falabella:1", 15_000)], history_of(("falabella:1", [100_000])))
     reason, drop = found["falabella:1"]
-    assert drop == 80.0 and "último precio visto" in reason and "$100.000" in reason and "$20.000" in reason
+    assert drop == 85.0 and "último precio visto" in reason and "$100.000" in reason and "$15.000" in reason
 
 
 def test_the_lowest_price_ever_seen_also_counts():
@@ -35,8 +35,8 @@ def test_the_lowest_price_ever_seen_also_counts():
 
 def test_an_ordinary_sale_is_not_a_mistake():
     history = history_of(("falabella:1", [100_000]))
-    assert find_price_errors([deal("falabella:1", 40_000)], history) == {}     # -60 %
-    assert find_price_errors([deal("falabella:1", 30_000)], history) == {}     # -70 %
+    for price in (50_000, 40_000, 30_000, 20_000):  # -50 %, -60 %, -70 %, -80 %: sales, however deep
+        assert find_price_errors([deal("falabella:1", price)], history) == {}
 
 
 def test_cheap_products_are_never_worth_an_alert():
@@ -52,22 +52,63 @@ def test_a_campaign_is_not_a_mistake():
     """Many products of one store dropping by the same percentage: a brand's 'everything 80% off'."""
     ids = [f"hushpuppies:{i}" for i in range(CAMPAIGN_SIZE)]
     history = history_of(*[(i, [100_000]) for i in ids])
-    deals = [deal(i, 20_000) for i in ids]
+    deals = [deal(i, 15_000) for i in ids]
     assert find_price_errors(deals, history) == {}
     # one fewer is a coincidence, not a campaign
     assert len(find_price_errors(deals[: CAMPAIGN_SIZE - 1], history)) == CAMPAIGN_SIZE - 1
 
 
-def test_half_the_price_in_the_sister_store_is_flagged():
-    deals = [deal("falabella:77", 20_000), deal("sodimac:77", 60_000)]
+def test_a_fifth_of_the_price_in_the_sister_store_is_flagged():
+    deals = [deal("falabella:77", 10_000), deal("sodimac:77", 60_000)]
     found = find_price_errors(deals, {})
     reason, drop = found["falabella:77"]
     assert "sodimac:77" not in found
-    assert "Falabella" in reason and "Sodimac" in reason and drop == 67.0
+    assert "Falabella" in reason and "Sodimac" in reason and drop == 83.0
+
+
+def test_half_the_price_in_the_sister_store_is_just_a_cheaper_store():
+    """The two stores price the same SKU differently all the time: -50 % or -67 % between them is normal."""
+    assert find_price_errors([deal("falabella:77", 30_000), deal("sodimac:77", 60_000)], {}) == {}
+    assert find_price_errors([deal("falabella:77", 20_000), deal("sodimac:77", 60_000)], {}) == {}
 
 
 def test_similar_prices_in_the_sister_store_are_normal():
     assert find_price_errors([deal("falabella:77", 55_000), deal("sodimac:77", 60_000)], {}) == {}
+
+
+# ---- a missing digit --------------------------------------------------------------------------------
+
+def test_a_missing_zero_against_a_price_we_saw_is_flagged():
+    """$150,000 typed as $15,000."""
+    found = find_price_errors([deal("falabella:5", 15_000)], history_of(("falabella:5", [150_000])))
+    reason, drop = found["falabella:5"]
+    assert "falta" in reason and "un cero" in reason and "$150.000" in reason and drop == 90.0
+
+
+def test_two_missing_zeros_are_flagged_too():
+    found = find_price_errors([deal("falabella:5", 1_500)], history_of(("falabella:5", [150_000])))
+    assert "dos ceros" in found["falabella:5"][0]
+
+
+def test_a_missing_zero_against_the_sister_store_is_flagged_without_any_history():
+    deals = [deal("falabella:8", 15_990), deal("sodimac:8", 159_990)]
+    found = find_price_errors(deals, {})
+    assert "falabella:8" in found and "un cero" in found["falabella:8"][0] and "Sodimac" in found["falabella:8"][0]
+    assert "sodimac:8" not in found
+
+
+def test_the_slip_needs_a_reference_big_enough_for_the_typo_to_matter():
+    # 1/10 of $14,000 is below the minimum for both rules; 1/10 of $20,000 is a drop, not a typo worth the name
+    assert find_price_errors([deal("falabella:5", 1_400)], history_of(("falabella:5", [14_000]))) == {}
+
+
+def test_the_stores_own_normal_price_alone_proves_nothing():
+    """A crossed-out $150,000 next to $15,000 is how a seller advertises 90 % off: no history, no flag."""
+    assert find_price_errors([deal("falabella:6", 15_000, list_price=150_000)], {}) == {}
+
+
+def test_an_ordinary_discount_is_not_a_missing_digit():
+    assert find_price_errors([deal("falabella:5", 75_000)], history_of(("falabella:5", [150_000]))) == {}
 
 
 def test_only_the_sister_stores_are_compared_with_each_other():
