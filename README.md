@@ -189,9 +189,9 @@ antes se agotaba en las primeras horas y el resto del día no llegaba nada. Las 
   oferta, no un error): (1) **falta un dígito**: el precio es ~1/10 o ~1/100 de un precio que vimos (o del de la
   tienda gemela): $150.000 escrito como $15.000; (2) **bajada de 85 % o más** frente al último precio visto o al
   mínimo histórico; (3) la tienda gemela (Falabella/Sodimac) cobra **5 veces o más** por el mismo código. No
-  cuentan productos que valían menos de $15.000, ni el \"precio normal\" tachado de la tienda (no prueba nada), ni
+  cuentan productos que valían menos de $15.000, ni el "precio normal" tachado de la tienda (no prueba nada), ni
   una campaña (5 o más productos de una tienda que bajan el mismo porcentaje). La alerta
-  \"🚨⚠️ POSIBLE ERROR DE PRECIO\" va primero, al chat de alertas y a los suscriptores, fuera de las cuotas
+  "🚨⚠️ POSIBLE ERROR DE PRECIO" va primero, al chat de alertas y a los suscriptores, fuera de las cuotas
   diarias (máx. 20 por run; el resto espera al siguiente).
 - **Escaneo caliente del Cyber** (`main_hot.py` + `.github/workflows/hot.yml`): cada ~10 minutos pide a
   Falabella y Sodimac solo los productos con **70 % de descuento o más** (un filtro que sus listados ofrecen)
