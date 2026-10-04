@@ -16,15 +16,36 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+/** Flecha que avisa de que la categoría tiene subcategorías: apunta a la derecha y baja al abrirse. */
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      className={`h-3.5 w-3.5 shrink-0 transition-transform motion-reduce:transition-none ${open ? "rotate-90" : ""}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M6 3.5L10.5 8L6 12.5" />
+    </svg>
+  );
+}
+
 function Choice({
   href,
   active,
   current,
   children,
   count,
+  chevron,
 }: {
   href: string;
   active: boolean;
+  /** La categoría tiene subcategorías: "closed" las anuncia con una flecha, "open" ya las muestra debajo. */
+  chevron?: "closed" | "open";
   /** El elemento es la rama abierta aunque no sea la selección exacta (la categoría con una subcategoría elegida). */
   current?: boolean;
   children: React.ReactNode;
@@ -38,7 +59,11 @@ function Choice({
         active ? "bg-ink font-semibold text-paper" : current ? "font-semibold hover:bg-claim-bg" : "hover:bg-claim-bg"
       }`}
     >
-      <span>{children}</span>
+      <span className="flex items-center gap-2">
+        {chevron ? <Chevron open={chevron === "open"} /> : null}
+        <span>{children}</span>
+        {chevron === "closed" ? <span className="sr-only">: tiene subcategorías</span> : null}
+      </span>
       {count !== undefined ? <span className={`text-sm ${active ? "" : "text-muted"}`}>{count.toLocaleString("es-CL")}</span> : null}
     </Link>
   );
@@ -69,6 +94,7 @@ function FilterBody({ filters, stats }: { filters: Filters; stats: FeedStats }) 
                 href={filtersHref(filters, { cat: group, sub: null })}
                 active={filters.cat === group && filters.sub === null}
                 current={filters.cat === group}
+                chevron={Object.keys(stats.subs?.[group] ?? {}).length > 0 ? (filters.cat === group ? "open" : "closed") : undefined}
                 count={stats.groups[group]}
               >
                 {groupName(group)}
