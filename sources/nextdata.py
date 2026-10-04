@@ -9,6 +9,7 @@ second and a whole category can be paged through cheaply.
 import json
 import re
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
@@ -34,6 +35,11 @@ FETCH_ATTEMPTS = 3
 DEFAULT_MAX_SEARCH_PAGES = 3
 DEFAULT_MAX_CATEGORY_PAGES = 4
 DEFAULT_MAX_CATEGORIES = 40
+# 70 % and up: at 60 % Falabella alone has ~10,000 products (mostly sellers' inflated list prices),
+# at 70 % about 1,300. The facet tops out at 70, so this also holds the 80-95 % mistakes.
+DEFAULT_HOT_DISCOUNT_PCT = 70
+DEFAULT_HOT_PAGES = 2
+DEFAULT_HOT_MAX_CATEGORIES = 250
 WORKERS = 4
 MAX_WORKERS = 12  # a cap on what the watchlist may ask for: more is a way to get blocked
 
@@ -55,11 +61,41 @@ def _parse_price(text) -> int:
     return int(digits) if digits else 0
 
 
+class Blocked(RuntimeError):
+    """The site answered 403/429 too many times: stop asking (more requests only deepen a block)."""
+
+
+# After this many 403/429 answers from one host in this process, every further request fails at once.
+BLOCK_LIMIT = 8
+_blocks: dict[str, int] = {}
+_blocks_lock = threading.Lock()
+
+
+def reset_blocks() -> None:
+    with _blocks_lock:
+        _blocks.clear()
+
+
+def _note_block(url: str) -> None:
+    host = urlsplit(url).netloc
+    with _blocks_lock:
+        _blocks[host] = _blocks.get(host, 0) + 1
+
+
+def _is_blocked(url: str) -> bool:
+    with _blocks_lock:
+        return _blocks.get(urlsplit(url).netloc, 0) >= BLOCK_LIMIT
+
+
 def fetch_html(url: str) -> str:
     last_error: Exception | None = None
     for attempt in range(FETCH_ATTEMPTS):
+        if _is_blocked(url):
+            raise Blocked(f"{urlsplit(url).netloc} answered 403/429 {BLOCK_LIMIT} times: not asking again this run")
         try:
             response = httpclient.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT_SECONDS)
+            if response.status_code in (403, 429):
+                _note_block(url)
             response.raise_for_status()
             return response.text
         except requests.RequestException as exc:
@@ -181,6 +217,18 @@ def scan_listing(
     return list(deals.values())
 
 
+def discount_facet(pct: int) -> str:
+    """Query-string filter both stores offer: only products with at least ``pct`` % off (they accept 20-70).
+
+    A category such as swimwear goes from 3,114 products to 199 at 60 % and 34 at 70 %, so the best
+    discounts of the whole site fit in a few pages."""
+    return "f.range.derived.variant.discount=" + quote(f"{pct}% dcto y más").replace("%20", "+")
+
+
+def with_facet(url: str, facet: str) -> str:
+    return url + ("&" if "?" in url else "?") + facet
+
+
 def discover_categories(
     home_html: str,
     cfg: StoreConfig,
@@ -225,11 +273,33 @@ def fetch_store_deals(
     max_search = scan.get("max_search_pages", DEFAULT_MAX_SEARCH_PAGES)
     max_category = scan.get("max_category_pages", DEFAULT_MAX_CATEGORY_PAGES)
 
+    # "Hot" scan: only products with a big discount, over every category of the menu and every keyword.
+    # With ``hot_only`` it is the whole job (the 5-minute Cyber scan); without it, nothing changes.
+    hot_only = bool(scan.get("hot_only"))
+    hot_pct = scan.get("hot_discount_pct", DEFAULT_HOT_DISCOUNT_PCT)
+    hot_pages = scan.get("hot_pages", DEFAULT_HOT_PAGES)
+    hot_jobs: list[tuple[str, str, int, str]] = []
+    if hot_only:
+        facet = discount_facet(int(hot_pct))
+        for keyword in watchlist.get("keywords", []):
+            hot_jobs.append((keyword, with_facet(cfg.search_url.format(query=quote(keyword)), facet), hot_pages, ""))
+        try:
+            everything = discover_categories(
+                fetch_home(cfg.home_url), cfg, {"hot": [""]}, scan.get("hot_max_categories", DEFAULT_HOT_MAX_CATEGORIES)
+            )
+        except Exception as exc:
+            health.warn(cfg.store, f"{cfg.store} hot category discovery failed: {exc}")
+            everything = []
+        for group, category_id, slug in everything:
+            hint = slug.replace("-", " ").replace("_", " ")
+            url = with_facet(cfg.category_url.format(id=category_id, slug=slug), facet)
+            hot_jobs.append((group, url, hot_pages, hint))
+
     deep_slugs = {slug.lower() for slug in scan.get("deep_slugs", [])}
     deep_pages = scan.get("deep_pages", max_category)
     jobs: list[tuple[str, str, int, str]] = []  # (category label, start url, max pages, hint)
     patterns = scan.get("category_patterns", {})
-    if patterns:
+    if patterns and not hot_only:
         try:
             categories = discover_categories(
                 fetch_home(cfg.home_url), cfg, patterns, scan.get("max_categories", DEFAULT_MAX_CATEGORIES)
@@ -246,8 +316,10 @@ def fetch_store_deals(
             pages = deep_pages if slug.lower() in deep_slugs else max_category
             hint = slug.replace("-", " ").replace("_", " ")
             jobs.append((group, cfg.category_url.format(id=category_id, slug=slug), pages, hint))
-    for keyword in watchlist.get("keywords", []):
-        jobs.append((keyword, cfg.search_url.format(query=quote(keyword)), max_search, ""))
+    if not hot_only:
+        for keyword in watchlist.get("keywords", []):
+            jobs.append((keyword, cfg.search_url.format(query=quote(keyword)), max_search, ""))
+    jobs = hot_jobs + jobs
 
     def run(job):
         label, url, pages, hint = job

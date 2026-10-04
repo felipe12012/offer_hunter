@@ -191,6 +191,14 @@ antes se agotaba en las primeras horas y el resto del día no llegaba nada. Las 
   productos de una tienda que bajan el mismo porcentaje: eso es una liquidación, no un error). La alerta
   "🚨⚠️ POSIBLE ERROR DE PRECIO" va primero, al chat de alertas y a los suscriptores, fuera de las cuotas
   diarias (máx. 20 por run; el resto espera al siguiente).
+- **Escaneo caliente del Cyber** (`main_hot.py` + `.github/workflows/hot.yml`): cada ~10 minutos pide a
+  Falabella y Sodimac solo los productos con **70 % de descuento o más** (un filtro que sus listados ofrecen)
+  en todas las categorías del menú y todas las palabras clave: ~1.700 productos en ~1-2 minutos, contra ~50.000
+  y ~10 minutos del escaneo normal. Anuncia al instante los posibles errores de precio y los descuentos que
+  nuestro historial confirma en 60 % o más; el resto espera al escaneo normal. No hace commit de `data/`: lo
+  anunciado queda en Supabase (`offer_sent`) y el escaneo normal lo lee de ahí para no repetirlo. Si el sitio
+  responde 403/429 ocho veces, deja de pedir en esa corrida. Se puede lanzar más seguido desde cron-job.org
+  (`POST .../workflows/hot.yml/dispatches`) igual que el escaneo normal.
 - **Canal público** (`TELEGRAM_PUBLIC_CHAT_ID`): recibe una copia de cada oferta, para seguirlas sin bot.
 - Si Telegram no puede bajar la foto desde la URL, el programa la descarga y la sube; si tampoco, el
   mensaje sale sin foto. **Nunca se pierde una oferta por una imagen.**

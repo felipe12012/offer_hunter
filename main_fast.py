@@ -392,6 +392,19 @@ def announce_store_health(mirror, reports: list[StoreReport]) -> None:
         print(f"Store health check skipped: {exc}", file=sys.stderr)
 
 
+def remote_sent_keys() -> set[str]:
+    """Offers another workflow (the Cyber hot scan, main_hot.py) announced since the last commit of
+    data/: they live only in Supabase, and without them this run would announce the same offers again."""
+    store = SupabaseSync.from_env()
+    if store is None:
+        return set()
+    try:
+        return store.recent_sent_keys()
+    except Exception as exc:
+        log_failure("read recently sent offers", exc)
+        return set()
+
+
 def refresh_subscribers() -> list[int]:
     """Register /start and /stop received since the last run and return the active chats.
 
@@ -528,7 +541,7 @@ def run() -> int:
         write_step_summary(f"### Red\n\n{httpclient.to_markdown()}")
 
     history = load_price_history(HISTORY_PATH)
-    seen_keys = load_seen(SEEN_PATH)
+    seen_keys = load_seen(SEEN_PATH) | remote_sent_keys()
     unverified_watchlist = {**watchlist, "verify_advertised_discount": False}
 
     candidates: list[ScoredDeal] = []

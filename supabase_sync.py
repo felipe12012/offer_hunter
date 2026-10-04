@@ -14,7 +14,7 @@ import json
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -172,6 +172,28 @@ class SupabaseSync:
             prefer="resolution=merge-duplicates,return=minimal",
             params={"on_conflict": "key"},
         )
+
+    def recent_sent_keys(self, hours: int = 48, page_size: int = 1000, max_pages: int = 30) -> set[str]:
+        """"product_id:price" of every offer sent in the last ``hours``: what another workflow (the Cyber hot
+        scan) already announced, so this one does not announce it again. PostgREST returns at most
+        1000 rows per request, hence the paging."""
+        since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        keys: set[str] = set()
+        for page in range(max_pages):
+            rows = self._get_rows(
+                "offer_sent",
+                {
+                    "select": "product_id,price",
+                    "sent_at": f"gte.{since}",
+                    "order": "id",
+                    "limit": page_size,
+                    "offset": page * page_size,
+                },
+            )
+            keys.update(f"{row['product_id']}:{row['price']}" for row in rows)
+            if len(rows) < page_size:
+                break
+        return keys
 
     # -- scan mirror ---------------------------------------------------------
 

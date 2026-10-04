@@ -1,0 +1,46 @@
+name: Cyber Hot Scan
+
+# Falabella and Sodimac listings filtered to 70 % off or more, announcing possible pricing mistakes and
+# confirmed big discounts within minutes (main_hot.py). The regular scan (fast.yml) stays as it is.
+# It does not commit data/: what it announces is recorded in Supabase and read back by the regular scan.
+on:
+  schedule:
+    - cron: "3,13,23,33,43,53 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A hot scan that overlaps the next is pointless; keep the one running and one queued.
+concurrency:
+  group: cyber-hot-scan
+  cancel-in-progress: false
+
+jobs:
+  hot-scan:
+    runs-on: ubuntu-latest
+    environment: env
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Hot scan
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_ALERT_CHAT_ID: ${{ secrets.TELEGRAM_ALERT_CHAT_ID }}
+          TELEGRAM_ALERT_THREAD_ID: ${{ secrets.TELEGRAM_ALERT_THREAD_ID }}
+          TELEGRAM_PUBLIC_CHAT_ID: ${{ secrets.TELEGRAM_PUBLIC_CHAT_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python main_hot.py
