@@ -71,9 +71,7 @@ def page_check(row: dict) -> str:
         prices = [(x.get("type"), x.get("price")) for x in (variant.get("prices") or [])][:2]
         out.append(f"{flags} prices={prices}")
     top = {k: v for k, v in data.items() if flag.search(k) and not isinstance(v, (dict, list))}
-    return info + f" top={top} variants={len(data.get('variants') or [])}
-         " + "
-         ".join(out[:4])
+    return info + f" top={top} variants={len(data.get('variants') or [])} | " + " | ".join(out[:4])
 
 
 for store, cfg in (("falabella", falabella.CONFIG), ("sodimac", sodimac.CONFIG)):
