@@ -18,6 +18,7 @@ import sys
 import time
 from dataclasses import replace
 
+import health_check
 import main_fast
 from dedup import deal_key, load_seen
 from deal_filter import evaluate
@@ -122,6 +123,8 @@ def run() -> int:
             store.sync_scan(deals)
         except Exception as exc:
             log_failure("mirror hot scan", exc)
+    health_check.beat(store, "hot")
+    health_check.check(store, "hot")
     return 0
 
 

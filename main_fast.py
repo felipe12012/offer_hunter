@@ -17,6 +17,7 @@ from dedup import deal_key, load_seen, mark_seen
 from models import Deal, ScoredDeal
 import notifier
 from notifier import MAX_PRIORITY_UNVERIFIED_PER_RUN, send_alert, send_offers
+import health_check
 from price_error import as_scored, find_price_errors
 from sources import httpclient, progress
 from subscribers import process_updates
@@ -733,7 +734,18 @@ def run() -> int:
             budget.get("unverified", 0), telegram_line, supabase_line, time.time() - started,
         )
     )
+    record_heartbeat()
     return 0
+
+
+def record_heartbeat() -> None:
+    """Leave this scan's mark in Supabase and, from the HTTP tier, check that the hot and browser scans are alive:
+    GitHub's own schedules are unreliable, and these runs are the ones that do happen (see health_check.py)."""
+    tier = (os.environ.get("SCAN_TIER") or "").strip().lower()
+    store = SupabaseSync.from_env()
+    health_check.beat(store, "browser" if tier == "browser" else "fast")
+    if tier != "browser":
+        health_check.check(store, "fast")
 
 
 def selftest(limit: int = 3) -> int:
