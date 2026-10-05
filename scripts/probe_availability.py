@@ -59,27 +59,21 @@ def page_check(row: dict) -> str:
         r = requests.get(row["url"], headers=nextdata.HEADERS, timeout=30)
     except Exception as exc:  # noqa: BLE001
         return f"page ERROR {type(exc).__name__}"
-    info = f"page {r.status_code} {len(r.content) // 1024}KB {time.time() - began:.1f}s"
+    info = f"page {r.status_code} {time.time() - began:.1f}s"
     m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', r.text, re.S)
     if not m:
-        return info + " no-next-data title=" + str(re.findall(r"<title>(.*?)</title>", r.text, re.S)[:1])
+        return info + " no-next-data"
     data = json.loads(m.group(1))["props"]["pageProps"].get("productData") or {}
-    found = []
-
-    def walk(obj, path="", depth=0):
-        if depth > 7:
-            return
-        if isinstance(obj, dict):
-            for k, v in obj.items():
-                if re.search(r"avail|stock|sellable|soldout|buyable|inventory", k, re.I) and not isinstance(v, (dict, list)):
-                    found.append(f"{path}.{k}={v}")
-                walk(v, f"{path}.{k}", depth + 1)
-        elif isinstance(obj, list):
-            for i, v in enumerate(obj[:3]):
-                walk(v, f"{path}[{i}]", depth + 1)
-
-    walk(data)
-    return info + " productData keys=" + str(list(data.keys())[:6]) + " flags=" + "; ".join(found[:8])
+    out = []
+    flag = re.compile(r"avail|stock|sellable|soldout|buyable|inventory|status|active|visible|publish", re.I)
+    for variant in (data.get("variants") or [])[:6]:
+        flags = {k: v for k, v in variant.items() if flag.search(k) and not isinstance(v, (dict, list))}
+        prices = [(x.get("type"), x.get("price")) for x in (variant.get("prices") or [])][:2]
+        out.append(f"{flags} prices={prices}")
+    top = {k: v for k, v in data.items() if flag.search(k) and not isinstance(v, (dict, list))}
+    return info + f" top={top} variants={len(data.get('variants') or [])}
+         " + "
+         ".join(out[:4])
 
 
 for store, cfg in (("falabella", falabella.CONFIG), ("sodimac", sodimac.CONFIG)):
