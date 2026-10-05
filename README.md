@@ -193,7 +193,8 @@ antes se agotaba en las primeras horas y el resto del día no llegaba nada. Las 
   una campaña (5 o más productos de una tienda que bajan el mismo porcentaje). La alerta
   "🚨⚠️ POSIBLE ERROR DE PRECIO" va primero, al chat de alertas y a los suscriptores, fuera de las cuotas
   diarias (máx. 20 por run; el resto espera al siguiente).
-- **Escaneo caliente del Cyber** (`main_hot.py` + `.github/workflows/hot.yml`): cada ~10 minutos pide a
+- **Escaneo caliente del Cyber** (`main_hot.py` + `.github/workflows/hot.yml`): cada ~10 minutos lee además, completas,
+  Hites, Ahumada, La Polar, Tricot, Tus Mascotas y Laika (tiendas HTTP pequeñas), y pide a
   Falabella y Sodimac solo los productos con **70 % de descuento o más** (un filtro que sus listados ofrecen)
   en todas las categorías del menú y todas las palabras clave: ~1.700 productos en ~1-2 minutos, contra ~50.000
   y ~10 minutos del escaneo normal. Anuncia al instante los posibles errores de precio y los descuentos que

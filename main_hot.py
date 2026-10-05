@@ -2,8 +2,8 @@
 
 The regular scan (main_fast.py) reads ~50,000 products and takes ~10 minutes, so a pricing mistake
 could wait that long and then be bought out. This one asks both stores only for products with 70 % off
-or more (a filter their listings offer), over every category and keyword: ~1,700 products in about
-a minute, and announces what is worth a hurry:
+or more (a filter their listings offer), over every category and keyword (~1,700 products in about
+a minute), and reads the small plain-HTTP stores in full (HOT_FULL_STORES). It announces what is worth a hurry:
 
 * possible pricing mistakes (price_error.py);
 * discounts our own history confirms at 60 % or more.
@@ -28,17 +28,21 @@ from reports import format_log
 from sources import httpclient
 from supabase_sync import SupabaseSync, log_failure
 
-# Stores whose listings can be filtered by discount.
+# Stores whose listings can be filtered by discount: only the discounted products are read.
 HOT_STORES = ("falabella", "sodimac")
+# Small plain-HTTP stores (900 to 4,400 products, 50 to 200 s each): read in full every time, which is as fast
+# as filtering would be. Browser stores are too slow for this scan and the blocked ones cannot be read at all.
+HOT_FULL_STORES = ("hites", "ahumada", "lapolar", "tricot", "tusmascotas", "laikamascotas")
 # Only verified discounts at least this big are worth announcing ahead of the regular scan.
 HOT_MIN_VERIFIED_PCT = 60
 # A hot scan that has not finished in this long is dropped: the next one starts in a few minutes.
-HOT_TIMEOUT_SECONDS = 240
+HOT_TIMEOUT_SECONDS = 360
 
 
 def hot_watchlist(watchlist: dict) -> dict:
     """The watchlist with every other store disabled and the scan switched to hot mode."""
-    others = {store for store, _attr in main_fast.SOURCE_FETCHERS if store not in HOT_STORES}
+    wanted = set(HOT_STORES) | set(HOT_FULL_STORES)
+    others = {store for store, _attr in main_fast.SOURCE_FETCHERS if store not in wanted}
     disabled = sorted({name.lower() for name in watchlist.get("disabled_stores", [])} | others)
     return {**watchlist, "disabled_stores": disabled, "scan": {**watchlist.get("scan", {}), "hot_only": True}}
 

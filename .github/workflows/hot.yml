@@ -1,7 +1,7 @@
 name: Cyber Hot Scan
 
-# Falabella and Sodimac listings filtered to 70 % off or more, announcing possible pricing mistakes and
-# confirmed big discounts within minutes (main_hot.py). The regular scan (fast.yml) stays as it is.
+# Falabella and Sodimac listings filtered to 70 % off or more, plus the small HTTP stores in full, announcing possible
+# pricing mistakes and confirmed big discounts within minutes (main_hot.py). The regular scan (fast.yml) stays as it is.
 # It does not commit data/: what it announces is recorded in Supabase and read back by the regular scan.
 on:
   schedule:
@@ -20,7 +20,7 @@ jobs:
   hot-scan:
     runs-on: ubuntu-latest
     environment: env
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:

@@ -125,11 +125,12 @@ def test_what_was_already_announced_is_not_announced_again():
     assert main_hot.pick_candidates([offer], WATCH, history, {f"{offer.id}:{offer.price}"}) == []
 
 
-def test_only_the_two_stores_with_the_filter_are_scanned():
+def test_the_hot_scan_covers_the_filtered_stores_and_the_small_http_ones_only():
     watchlist = main_hot.hot_watchlist({"disabled_stores": ["paris"], "scan": {"deep_pages": 10}})
     assert watchlist["scan"]["hot_only"] is True and watchlist["scan"]["deep_pages"] == 10
     enabled = {store for store, _ in main_fast.SOURCE_FETCHERS} - set(watchlist["disabled_stores"])
-    assert enabled == set(main_hot.HOT_STORES)
+    assert enabled == set(main_hot.HOT_STORES) | set(main_hot.HOT_FULL_STORES)
+    assert not {"skechers", "salcobrand", "paris"} & enabled  # browser and blocked stores stay out
 
 
 # ---- the whole run ----------------------------------------------------------------------------------
