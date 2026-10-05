@@ -96,7 +96,7 @@ def parse_html(html: str, category: str) -> list[Deal]:
     cards = soup.select(CARD_SELECTOR)
     if not cards:
         title = soup.title.get_text(strip=True) if soup.title else "<no title>"
-        raise RuntimeError(
+        raise health.NoResultsError(
             "No product cards found on MacOnline search results page; "
             "the site may be unreachable or its HTML structure may have changed "
             f"(page title={title!r}, html length={len(html)})"
@@ -136,6 +136,8 @@ def fetch_deals(watchlist: dict) -> list[Deal]:
         try:
             for deal in parse_html(fetch_html(keyword), category=CATEGORY):
                 deals.setdefault(deal.id, deal)
+        except health.NoResultsError:
+            health.empty("maconline", keyword)  # the store does not carry it: not an error
         except Exception as exc:  # noqa: BLE001 - isolate one bad keyword
             failures += 1
             health.warn("maconline", f"maconline keyword {keyword!r} failed: {exc}")

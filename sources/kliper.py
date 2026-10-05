@@ -106,7 +106,7 @@ def parse_html(html: str, category: str) -> list[Deal]:
     cards = soup.select(CARD_SELECTOR)
     if not cards:
         title = soup.title.get_text(strip=True) if soup.title else "<no title>"
-        raise RuntimeError(
+        raise health.NoResultsError(
             "No product cards found on Kliper search results page; "
             "the site may be unreachable or its HTML structure may have changed "
             f"(page title={title!r}, html length={len(html)})"
@@ -132,6 +132,7 @@ def fetch_html(keyword: str) -> str:
     for attempt in range(3):
         try:
             response = httpclient.get(url, headers=REQUEST_HEADERS)
+            httpclient.raise_if_blocked(response)
             response.raise_for_status()
             return response.text
         except requests.RequestException as exc:
@@ -149,6 +150,10 @@ def fetch_deals(watchlist: dict) -> list[Deal]:
         # carry it) — isolate it instead of letting it abort every other keyword.
         try:
             deals.extend(parse_html(fetch_html(keyword), category=CATEGORY))
+        except health.NoResultsError:
+            health.empty("kliper", keyword)  # the store does not carry it: not an error
+        except httpclient.Blocked as exc:
+            raise RuntimeError(f"Kliper is refusing us ({exc}); not asking again this run") from exc
         except Exception as exc:  # noqa: BLE001 - isolate one bad keyword
             failures += 1
             health.warn("kliper", f"kliper keyword {keyword!r} failed: {exc}")

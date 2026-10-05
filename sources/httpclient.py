@@ -25,6 +25,19 @@ _lock = threading.Lock()
 _stats: dict[str, dict] = {}
 
 
+class Blocked(RuntimeError):
+    """The site answered 403/405/429: it is refusing us. Retrying only deepens the block."""
+
+
+# Statuses that mean "we are being refused", as opposed to a page that is simply missing.
+BLOCK_STATUSES = (403, 405, 429)
+
+
+def raise_if_blocked(response: requests.Response) -> None:
+    if response.status_code in BLOCK_STATUSES:
+        raise Blocked(f"HTTP {response.status_code} from {urlsplit(response.url or '').netloc or 'the site'}")
+
+
 def _session() -> requests.Session:
     session = getattr(_local, "session", None)
     if session is None:

@@ -37,6 +37,8 @@ USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 )
+# The WooCommerce store API answers in ~8 s (p95 ~12 s): the 15 s default timed out and lost the scan.
+REQUEST_TIMEOUT_SECONDS = 45
 REQUEST_HEADERS = {
     "User-Agent": USER_AGENT,
     "Accept": "application/json, text/plain, */*",
@@ -149,7 +151,7 @@ def _fetch_page(keyword: str, page: int) -> list:
     last_error: Exception | None = None
     for attempt in range(3):
         try:
-            response = httpclient.get(url, headers=REQUEST_HEADERS)
+            response = httpclient.get(url, headers=REQUEST_HEADERS, timeout=REQUEST_TIMEOUT_SECONDS)
             response.raise_for_status()
             payload = response.json()
             if not isinstance(payload, list):
