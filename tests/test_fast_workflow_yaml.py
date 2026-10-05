@@ -36,9 +36,13 @@ def test_fast_tier_runs_http_only_and_browser_tier_installs_chromium():
 
 
 def test_workflow_commits_data_files():
+    """The commit goes through scripts/commit_state.sh, which names the three state files."""
     content = WORKFLOW_PATH.read_text(encoding="utf-8")
-    assert "data/seen_items.json" in content
-    assert "data/price_history.json" in content
+    assert "bash scripts/commit_state.sh" in content
+    script = (WORKFLOW_PATH.parent.parent.parent / "scripts" / "commit_state.sh").read_text(encoding="utf-8")
+    assert "data/seen_items.json" in script
+    assert "data/price_history.json" in script
+    assert "data/alert_budget.json" in script
 
 
 def test_workflow_notifies_telegram_on_failure():
@@ -61,12 +65,13 @@ def test_workflow_serialises_runs_so_data_commits_do_not_collide():
     assert parsed["concurrency"]["group"]
 
 
-def test_workflow_rebases_before_pushing_data_files():
-    # Guards against the push being rejected when another run or a manual push
-    # landed while this scan was in flight.
-    content = WORKFLOW_PATH.read_text(encoding="utf-8")
+def test_workflow_merges_before_pushing_data_files():
+    # Guards against the push being rejected (or the state lost) when another run, the other tier or a manual
+    # push landed while this scan was in flight: the script merges the states and retries the push.
+    script = (WORKFLOW_PATH.parent.parent.parent / "scripts" / "commit_state.sh").read_text(encoding="utf-8")
 
-    assert "git pull --rebase" in content
+    assert "merge_state.py" in script
+    assert "git fetch" in script and "git push" in script
 
 
 def test_workflow_dispatch_offers_a_selftest_input():
