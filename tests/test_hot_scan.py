@@ -172,7 +172,7 @@ def test_a_failed_hot_scan_is_a_failed_run(monkeypatch, tmp_path):
     def boom(watchlist):
         raise RuntimeError("down")
 
-    _stub_all_sources(monkeypatch, fetch_falabella_deals=boom, fetch_sodimac_deals=boom)
+    _stub_all_sources(monkeypatch, **{attr: boom for attr in main_fast.SOURCE_NAMES})
     assert main_hot.run() == 1
 
 
