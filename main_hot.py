@@ -34,7 +34,7 @@ HOT_STORES = ("falabella", "sodimac")
 # as filtering would be. Browser stores are too slow for this scan and the blocked ones cannot be read at all.
 HOT_FULL_STORES = ("hites", "ahumada", "lapolar", "tricot", "tusmascotas", "laikamascotas")
 # Only verified discounts at least this big are worth announcing ahead of the regular scan.
-HOT_MIN_VERIFIED_PCT = 60
+HOT_MIN_VERIFIED_PCT = 50
 # A hot scan that has not finished in this long is dropped: the next one starts in a few minutes.
 HOT_TIMEOUT_SECONDS = 360
 

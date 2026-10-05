@@ -5,7 +5,7 @@ name: Cyber Hot Scan
 # It does not commit data/: what it announces is recorded in Supabase and read back by the regular scan.
 on:
   schedule:
-    - cron: "3,13,23,33,43,53 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:

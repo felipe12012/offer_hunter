@@ -115,7 +115,8 @@
       "ropa-deportiva-hombre"
     ],
     "deep_pages": 10,
-    "nextdata_workers": 6
+    "nextdata_workers": 6,
+    "hot_pages": 3
   },
   "alerts": {
     "tiers": [
@@ -139,8 +140,8 @@
   "verify_advertised_discount": "label",
   "priority": {
     "min_discount_pct": 20,
-    "max_per_run": 40,
-    "daily_cap": 2000,
+    "max_per_run": 50,
+    "daily_cap": 3500,
     "rules": [
       {
         "label": "Zapatillas bebé",

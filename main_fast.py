@@ -216,16 +216,16 @@ RUN_STATUS_PATH = Path(os.environ.get("RUN_STATUS_FILE") or Path(__file__).paren
 SOURCE_TIMEOUT_SECONDS = 600
 # Ceiling on unconfirmed advertised discounts sent per day (across all runs), on
 # top of the per-run cap in notifier. Resets at UTC midnight.
-# Raised for the 3-day Cyber (2026-10-05..07): 300 / 15 / 800 were sized for a normal day.
-DAILY_UNVERIFIED_CAP = 1200
+# Raised for the 3-day Cyber (2026-10-05..07): 300 / 15 / 800 were sized for a normal day. Second raise once it started.
+DAILY_UNVERIFIED_CAP = 2500
 # Most unconfirmed offers one run may send. Together with the pacing below this keeps the
 # chat readable even when a scan finds thousands of candidates.
-UNVERIFIED_PER_RUN = 30
+UNVERIFIED_PER_RUN = 40
 # Hours of the daily cap available from the start of the (UTC) day, so alerts begin right away.
 PACING_HEAD_START_MINUTES = 120
 # Same idea for the priority interests, which have a quota of their own
 # (overridable in the watchlist's "priority" block).
-DEFAULT_PRIORITY_DAILY_CAP = 2000
+DEFAULT_PRIORITY_DAILY_CAP = 3500
 
 
 def utc_now() -> datetime:
