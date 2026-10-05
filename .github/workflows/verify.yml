@@ -2,9 +2,9 @@ name: Verify Offers
 
 # Opens the product page of the offers people see (Falabella and Sodimac) and records whether the store still sells
 # them (verify_offers.py). Sold-out ones are hidden from the web's lists and marked on their page. No state files.
+# The schedule is OFF (2026-10-05): the user judged the first version did not work and the Cyber needs the scrapers
+# stable, not 300 extra product-page requests to Falabella/Sodimac every 5 minutes. Run it by hand if needed.
 on:
-  schedule:
-    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
