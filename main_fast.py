@@ -60,6 +60,10 @@ from sources.reuse import fetch_deals as fetch_reuse_deals
 from sources.sony import fetch_deals as fetch_sony_deals
 from sources.wayu import fetch_deals as fetch_wayu_deals
 from sources.zapatos import fetch_deals as fetch_zapatos_deals
+from sources.maconline import fetch_deals as fetch_maconline_deals
+from sources.antartica import fetch_deals as fetch_antartica_deals
+from sources.surprice import fetch_deals as fetch_surprice_deals
+from sources.kliper import fetch_deals as fetch_kliper_deals
 
 # The single roster of registered sources as (store, module attribute name).
 # The attribute is resolved at call time so tests can monkeypatch
@@ -101,6 +105,10 @@ SOURCE_FETCHERS = [
     ("zapatos", "fetch_zapatos_deals"),
     ("hm", "fetch_hm_deals"),
     ("sony", "fetch_sony_deals"),
+    ("maconline", "fetch_maconline_deals"),
+    ("antartica", "fetch_antartica_deals"),
+    ("surprice", "fetch_surprice_deals"),
+    ("kliper", "fetch_kliper_deals"),
 ]
 SOURCE_NAMES = [attr for _store, attr in SOURCE_FETCHERS]
 
