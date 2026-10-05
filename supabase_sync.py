@@ -221,6 +221,20 @@ class SupabaseSync:
     def record_run(self, stats: dict) -> None:
         self._post("offer_scan_runs", [stats], prefer="return=minimal")
 
+    def set_last_seen(self, ids: list[str], when: str) -> None:
+        """Move last_seen_at of some products (the verifier: sold out goes back, restocked comes forward)."""
+        if not ids:
+            return
+        response = requests.patch(
+            f"{self.url}/rest/v1/offer_products",
+            headers=self._headers("return=minimal"),
+            params={"id": f"in.({','.join(ids)})"},
+            data=json.dumps({"last_seen_at": when}),
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+        if response.status_code >= 400:
+            raise SupabaseError(f"PATCH offer_products failed (HTTP {response.status_code}: {response.text[:200]})")
+
     def refresh_feed(self) -> None:
         """Rebuild the public feed materialized view (offer_feed) after a scan, so
         the web sees this run's data. Server-side function, service_role only."""
