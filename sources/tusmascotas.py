@@ -39,6 +39,8 @@ USER_AGENT = (
 )
 # The WooCommerce store API answers in ~8 s (p95 ~12 s): the 15 s default timed out and lost the scan.
 REQUEST_TIMEOUT_SECONDS = 45
+# Its endpoint stalls under load (read timeouts, a scan of 6 minutes for 257 products): stop starting queries after this.
+TIME_BUDGET_SECONDS = 150
 REQUEST_HEADERS = {
     "User-Agent": USER_AGENT,
     "Accept": "application/json, text/plain, */*",
@@ -182,4 +184,5 @@ def fetch_deals(watchlist: dict) -> list[Deal]:
         "tusmascotas",
         queries,
         lambda keyword: parse_html(fetch_html(keyword), category=keyword),
+        budget_seconds=TIME_BUDGET_SECONDS,
     )

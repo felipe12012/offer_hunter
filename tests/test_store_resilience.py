@@ -94,3 +94,60 @@ def test_tus_mascotas_gets_a_long_timeout(monkeypatch):
     assert tusmascotas._fetch_page("perro", 1) == []
     assert seen["timeout"] == tusmascotas.REQUEST_TIMEOUT_SECONDS == 45
     assert seen["timeout"] > httpclient.DEFAULT_TIMEOUT_SECONDS
+
+
+# ---- a stalling store cannot stretch the scan --------------------------------------------------------------
+
+def _deal(deal_id):
+    from models import Deal
+
+    return Deal(id=deal_id, title="t", url="https://x", store="s", category="c", price=1, list_price=2,
+                discount_pct=50.0, scraped_at="2026-10-05T00:00:00+00:00")
+
+
+def test_queries_after_the_time_budget_are_skipped_and_the_finished_ones_kept(monkeypatch):
+    from sources import sfcc
+
+    clock = {"now": 0.0}
+    monkeypatch.setattr(sfcc.time, "monotonic", lambda: clock["now"])
+    ran = []
+
+    def scan(query):
+        ran.append(query)
+        clock["now"] += 100.0            # each query "takes" 100 s
+        return [_deal(f"s:{query}")]
+
+    health.drain()
+    deals = sfcc.run_queries("s", list("abcdef"), scan, workers=1, budget_seconds=250)
+
+    assert ran == ["a", "b", "c"]                    # 0, 100, 200 s: the fourth would start at 300 s > 250
+    assert sorted(d.id for d in deals) == ["s:a", "s:b", "s:c"]
+    events = health.drain()
+    assert any("time budget" in e["message"] and "3 of 6" in e["message"] for e in events)
+
+
+def test_a_store_that_ran_out_of_time_without_a_single_failure_is_not_dead(monkeypatch):
+    from sources import sfcc
+
+    health.drain()
+    # a budget already spent before the first query starts
+    assert sfcc.run_queries("s", ["a", "b"], lambda q: [_deal(f"s:{q}")], budget_seconds=-1) == []
+
+
+def test_every_query_failing_is_still_an_error(monkeypatch):
+    from sources import sfcc
+
+    def boom(query):
+        raise RuntimeError("down")
+
+    with pytest.raises(RuntimeError, match="All s queries failed"):
+        sfcc.run_queries("s", ["a", "b"], boom, workers=1)
+
+
+def test_a_store_the_run_gave_up_on_stops_starting_queries():
+    from sources import progress, sfcc
+
+    progress.stop()
+    ran = []
+    sfcc.run_queries("s", ["a", "b"], lambda q: ran.append(q) or [], workers=1)
+    assert ran == []
