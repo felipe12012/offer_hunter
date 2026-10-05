@@ -17,7 +17,9 @@ from dedup import deal_key, load_seen, mark_seen
 from models import Deal, ScoredDeal
 import notifier
 from notifier import MAX_PRIORITY_UNVERIFIED_PER_RUN, send_alert, send_offers
+import digest
 import health_check
+import mode
 from price_error import as_scored, find_price_errors
 from sources import httpclient, progress
 from subscribers import process_updates
@@ -475,6 +477,18 @@ def refresh_subscribers() -> list[int]:
     return subscribers
 
 
+def subscriber_filters() -> dict[str, dict]:
+    """{chat_id: filters} chosen with /categorias, /tiendas and /minimo (empty on any problem: everyone gets everything)."""
+    store = SupabaseSync.from_env()
+    if store is None:
+        return {}
+    try:
+        return store.subscriber_preferences()
+    except Exception as exc:
+        log_failure("read subscriber preferences", exc)
+        return {}
+
+
 def record_delivered(delivered: list[ScoredDeal]) -> None:
     """Write what was just sent to Supabase at once (offer_sent). The rest of the run (state files, the full scan
     mirror) happens later and a run killed in between would otherwise send the same offers again; the next run
@@ -645,13 +659,18 @@ def run() -> int:
         priority_config.get("max_per_run", MAX_PRIORITY_UNVERIFIED_PER_RUN), priority_room
     )
     subscribers = refresh_subscribers()
+    safe_mode = mode.is_safe()
+    if safe_mode:
+        print("SAFE MODE: only verified offers and price mistakes, nothing sent to subscribers", file=sys.stderr)
+        unverified_room = priority_limit = 0
     delivered = (
         send_offers(
             candidates,
             alerts=watchlist.get("alerts"),
             max_unverified=unverified_room,
             max_priority_unverified=priority_limit,
-            subscriber_chat_ids=subscribers,
+            subscriber_chat_ids=[] if safe_mode else subscribers,
+            subscriber_prefs=None if safe_mode else subscriber_filters(),
         )
         if candidates
         else []
@@ -746,6 +765,7 @@ def record_heartbeat() -> None:
     health_check.beat(store, "browser" if tier == "browser" else "fast")
     if tier != "browser":
         health_check.check(store, "fast")
+        digest.run_if_due(store)
 
 
 def selftest(limit: int = 3) -> int:

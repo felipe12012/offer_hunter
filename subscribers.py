@@ -12,6 +12,7 @@ import sys
 
 import requests
 
+import prefs as preferences
 from supabase_sync import SupabaseError, SupabaseSync
 
 TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
@@ -23,8 +24,11 @@ REQUEST_TIMEOUT_SECONDS = 30
 WELCOME = (
     "¡Hola{name}! 👋 Quedaste suscrito/a: te enviaré las mejores ofertas de tiendas chilenas, "
     "con el descuento verificado contra el historial de precios.\n\n"
+    "/categorias — elegir categorías\n"
+    "/tiendas — elegir tiendas\n"
+    "/minimo — descuento mínimo\n"
+    "/mis — ver tus filtros\n"
     "/stop — dejar de recibirlas\n"
-    "/start — volver a recibirlas\n"
     "/ayuda — cómo funciona"
 )
 GOODBYE = "Listo, no recibirás más ofertas. Escribe /start cuando quieras volver."
@@ -32,6 +36,11 @@ HELP = (
     "Reviso las tiendas cada 15 minutos y te aviso solo de las ofertas que valen la pena: "
     "descuentos confirmados con el historial de precios o de tus categorías de interés. "
     "Un precio \"antes\" inflado por la tienda no cuenta.\n\n"
+    "Personaliza lo que recibes:\n"
+    "/categorias — elegir categorías\n"
+    "/tiendas — elegir tiendas\n"
+    "/minimo — descuento mínimo (ej. /minimo 40)\n"
+    "/mis — ver tus filtros\n\n"
     "/stop — dejar de recibirlas\n"
     "/start — volver a recibirlas"
 )
@@ -85,6 +94,16 @@ def handle_update(update: dict, store: SupabaseSync, token: str) -> str | None:
         store.set_subscribers_active([chat_id], False)
         _call(token, "sendMessage", chat_id=chat_id, text=GOODBYE)
         return "unsubscribed"
+    if command in ("/categorias", "/tiendas", "/minimo", "/mis"):
+        import main_fast  # late: main_fast imports this module
+
+        args = (message.get("text") or "").partition(" ")[2]
+        current = store.get_subscriber_prefs(chat_id)
+        updated, reply = preferences.apply_command(command, args, current, {s for s, _attr in main_fast.SOURCE_FETCHERS})
+        if updated != current:
+            store.set_subscriber_prefs(chat_id, updated)
+        _call(token, "sendMessage", chat_id=chat_id, text=reply)
+        return None
     if command in ("/ayuda", "/help"):
         _call(token, "sendMessage", chat_id=chat_id, text=HELP)
     return None

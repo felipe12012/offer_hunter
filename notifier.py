@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 
 import requests
 
+import prefs as prefs_module
 from models import ScoredDeal
 
 TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
@@ -434,6 +435,7 @@ def send_offers(
     max_priority_unverified: int | None = None,
     public_chat_id: str | None = None,
     subscriber_chat_ids: list | None = None,
+    subscriber_prefs: dict | None = None,
 ) -> list[ScoredDeal]:
     """Send each offer as its own Telegram message (photo + caption + link button).
 
@@ -545,7 +547,7 @@ def send_offers(
         )
     if subscriber_chat_ids and delivered:
         own_chats = {str(chat) for chat in (chat_id, alert_chat_id, public_chat_id) if chat}
-        _send_to_subscribers(delivered, bot_token, subscriber_chat_ids, own_chats, alerts, alert_min)
+        _send_to_subscribers(delivered, bot_token, subscriber_chat_ids, own_chats, alerts, alert_min, subscriber_prefs)
     return delivered
 
 
@@ -556,8 +558,11 @@ def _send_to_subscribers(
     own_chats: set[str],
     alerts: dict | None,
     alert_min: float,
+    subscriber_prefs: dict | None = None,
 ) -> None:
     """Send the best of this run's offers to everyone who pressed /start.
+
+    ``subscriber_prefs`` ({chat_id: filters}, see prefs.py) narrows what each chat gets.
 
     Subscribers are not spammed with every unconfirmed discount: they get verified offers,
     priority interests and big discounts, best first, at most MAX_SUBSCRIBER_MESSAGES_PER_RUN."""
@@ -566,17 +571,24 @@ def _send_to_subscribers(
         if scored.price_error or scored.advertised_confirmed or scored.priority or _rank_key(scored) >= alert_min
     ]
     worth_sending.sort(key=_order_key, reverse=True)
-    worth_sending = worth_sending[:MAX_SUBSCRIBER_MESSAGES_PER_RUN]
     recipients = [str(chat) for chat in subscriber_chat_ids if str(chat) not in own_chats]
     if not worth_sending or not recipients:
+        return
+    prefs_by_chat = {str(chat): value for chat, value in (subscriber_prefs or {}).items()}
+    plan = {
+        chat: [s for s in worth_sending if prefs_module.matches(s, prefs_by_chat.get(chat))][:MAX_SUBSCRIBER_MESSAGES_PER_RUN]
+        for chat in recipients
+    }
+    if not any(plan.values()):
         return
 
     started = time.monotonic()
     sent = 0
-    for scored in worth_sending:
+    for rank in range(MAX_SUBSCRIBER_MESSAGES_PER_RUN):
         for chat in recipients:
-            if chat in UNREACHABLE_CHATS:
+            if chat in UNREACHABLE_CHATS or rank >= len(plan[chat]):
                 continue
+            scored = plan[chat][rank]
             if time.monotonic() - started > SUBSCRIBER_TIME_BUDGET_SECONDS:
                 print(f"Subscriber fan-out stopped after {SUBSCRIBER_TIME_BUDGET_SECONDS}s", file=sys.stderr)
                 print(f"Subscribers: {sent} messages sent to {len(recipients)} chats", file=sys.stderr)

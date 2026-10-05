@@ -139,6 +139,26 @@ class SupabaseSync:
         rows = self._get_rows("offer_subscribers", {"select": "chat_id", "active": "eq.true", "order": "chat_id"})
         return [int(row["chat_id"]) for row in rows]
 
+    def subscriber_preferences(self) -> dict[str, dict]:
+        """{chat_id: prefs} of the active subscribers that set any filter."""
+        rows = self._get_rows("offer_subscribers", {"select": "chat_id,prefs", "active": "eq.true"})
+        return {str(row["chat_id"]): row["prefs"] for row in rows if row.get("prefs")}
+
+    def get_subscriber_prefs(self, chat_id: int) -> dict:
+        rows = self._get_rows("offer_subscribers", {"select": "prefs", "chat_id": f"eq.{int(chat_id)}"})
+        return (rows[0].get("prefs") if rows else None) or {}
+
+    def set_subscriber_prefs(self, chat_id: int, prefs: dict) -> None:
+        response = requests.patch(
+            f"{self.url}/rest/v1/offer_subscribers",
+            headers=self._headers("return=minimal"),
+            params={"chat_id": f"eq.{int(chat_id)}"},
+            data=json.dumps({"prefs": prefs, "updated_at": _now_iso()}),
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+        if response.status_code >= 400:
+            raise SupabaseError(f"PATCH offer_subscribers prefs failed (HTTP {response.status_code}: {response.text[:200]})")
+
     def upsert_subscriber(self, chat_id: int, username: str | None, first_name: str | None, active: bool) -> None:
         self._post(
             "offer_subscribers",

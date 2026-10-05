@@ -19,6 +19,7 @@ import time
 from dataclasses import replace
 
 import health_check
+import mode
 import main_fast
 from dedup import deal_key, load_seen
 from deal_filter import evaluate
@@ -101,7 +102,8 @@ def run() -> int:
             alerts=watchlist.get("alerts"),
             max_unverified=0,
             max_priority_unverified=0,
-            subscriber_chat_ids=subscribers,
+            subscriber_chat_ids=[] if mode.is_safe() else subscribers,
+            subscriber_prefs=None if mode.is_safe() else main_fast.subscriber_filters(),
         )
         if candidates
         else []
