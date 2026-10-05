@@ -20,7 +20,7 @@ import {
 import { hasCredentials, rest, SupabaseConfigError } from "./supabase";
 import { VERIFIED_MIN_PCT } from "./tiers";
 import type { FeedRow, FeedStats, Mistake, MistakeItem, PricePoint } from "./types";
-import { isStale } from "./format";
+import { availability } from "./live";
 
 export const REVALIDATE_SECONDS = 120;
 
@@ -118,7 +118,7 @@ export async function getMistakes(): Promise<MistakeItem[]> {
   const byId = new Map(products.map((row) => [row.id, row]));
   const items = mistakes.map((mistake): MistakeItem => {
     const row = byId.get(mistake.product_id) ?? null;
-    return { mistake, row, stillValid: Boolean(row && row.price === mistake.price && !isStale(row.last_seen_at, 2)) };
+    return { mistake, row, stillValid: Boolean(row && row.price === mistake.price && !availability(row).ended) };
   });
   // Los que siguen a ese precio primero; dentro de cada grupo, los más recientes.
   return items.sort((a, b) => Number(b.stillValid) - Number(a.stillValid));

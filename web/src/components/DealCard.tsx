@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { agoFrom, clp, storeName } from "@/lib/format";
+import { availability } from "@/lib/live";
 import { dealView } from "@/lib/tiers";
 import type { FeedRow } from "@/lib/types";
 
@@ -15,10 +16,12 @@ export function productPath(id: string): string {
 export function DealCard({ row, priority = false }: { row: FeedRow; priority?: boolean }) {
   const view = dealView(row);
   const hasList = row.list_price > row.price;
+  const { ended } = availability(row);
 
   return (
-    <article className="relative flex flex-col border-b border-r border-line bg-surface">
+    <article className={`relative flex flex-col border-b border-r border-line bg-surface ${ended ? "ended" : ""}`}>
       <div className="photo relative">
+        {ended ? <span className="ended-badge">Oferta terminada</span> : null}
         {/* <img> a propósito: cada tienda sirve sus fotos desde otro dominio y algunas bloquean si hay Referer. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -58,8 +61,8 @@ export function DealCard({ row, priority = false }: { row: FeedRow; priority?: b
         </div>
 
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-          <VerifiedStamp verified={view.verified} />
-          <span className="text-xs text-muted">{agoFrom(row.last_seen_at)}</span>
+          {ended ? null : <VerifiedStamp verified={view.verified} />}
+          <span className="text-xs text-muted">{ended ? `Última vez ${agoFrom(row.last_seen_at)}` : agoFrom(row.last_seen_at)}</span>
         </div>
 
         <a
@@ -68,7 +71,7 @@ export function DealCard({ row, priority = false }: { row: FeedRow; priority?: b
           rel="noopener noreferrer nofollow"
           className="relative z-10 mt-2 block border border-ink px-3 py-2 text-center text-sm font-semibold hover:bg-ink hover:text-paper"
         >
-          Ver en {storeName(row.store)}
+          {ended ? "Revisar en" : "Ver en"} {storeName(row.store)}
         </a>
       </div>
     </article>

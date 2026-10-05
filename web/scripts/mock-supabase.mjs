@@ -19,6 +19,7 @@ const iso = (minutes) => new Date(now - minutes * 60_000).toISOString();
 const rows = [
   { id: "falabella:1001", store: "falabella", title: "Notebook Gamer 15.6 RTX", url: "https://example.com/1", image_url: "https://example.com/1.jpg", category_group: "tecnologia", price: 599990, list_price: 1199990, web_discount_pct: 50, saving: 600000, verified_pct: 50, web_confirmed: true, history_drop_pct: 0, points: 3, prev_min: 599990, last_seen_at: iso(4) },
   { id: "sodimac:2002", store: "sodimac", title: "Colchón 1 Plaza Ortopédico", url: "https://example.com/2", image_url: "https://example.com/2.jpg", category_group: "muebles", price: 89990, list_price: 299990, web_discount_pct: 70, saving: 210000, verified_pct: 0, web_confirmed: false, history_drop_pct: 0, points: 1, prev_min: null, last_seen_at: iso(9) },
+  { id: "sodimac:4004", store: "sodimac", title: "Cafetera Express 15 bares (oferta que ya terminó)", url: "https://example.com/4", image_url: "https://example.com/4.jpg", category_group: "muebles", price: 39990, list_price: 99990, web_discount_pct: 60, saving: 60000, verified_pct: 60, web_confirmed: true, history_drop_pct: 0, points: 2, prev_min: 39990, last_seen_at: iso(300) },
   { id: "hites:3003", store: "hites", title: "Tablet 10 pulgadas 128GB", url: "https://example.com/3", image_url: "https://example.com/3.jpg", category_group: "tecnologia", price: 139990, list_price: 139990, web_discount_pct: 0, saving: 0, verified_pct: 0, web_confirmed: false, history_drop_pct: 0, points: 2, prev_min: 139990, last_seen_at: iso(12) },
 ];
 

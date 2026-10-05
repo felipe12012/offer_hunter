@@ -157,6 +157,35 @@ body {
   padding: 0.75rem;
 }
 
+/* Oferta que ya no está a la venta: en blanco y negro, atenuada y con el precio tachado. */
+.ended .photo img,
+.ended .tag {
+  filter: grayscale(1);
+  opacity: 0.5;
+}
+.ended h3,
+.ended .price {
+  color: var(--muted);
+}
+.ended .price {
+  text-decoration: line-through;
+}
+.ended-badge {
+  position: absolute;
+  right: 0.5rem;
+  top: 0.5rem;
+  z-index: 1;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0.2rem 0.55rem;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1rem;
+  line-height: 1.1;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
 /* Esqueleto de carga */
 @keyframes sheen {
   to {
