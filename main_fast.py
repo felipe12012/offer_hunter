@@ -7,7 +7,7 @@ import traceback
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -477,6 +477,41 @@ def refresh_subscribers() -> list[int]:
     return subscribers
 
 
+FLOOD_KEY = "flood_until:"
+
+
+def load_flood_bans(now: datetime | None = None) -> None:
+    """Telegram bans a chat that gets too many messages for hours. The ban outlives the run: remember it, otherwise every
+    scan asks again (and the retries can extend it)."""
+    store = SupabaseSync.from_env()
+    if store is None:
+        return
+    now = now or datetime.now(timezone.utc)
+    try:
+        for chat in {c for c in (os.environ.get("TELEGRAM_CHAT_ID"), os.environ.get("TELEGRAM_ALERT_CHAT_ID"),
+                                 os.environ.get("TELEGRAM_PUBLIC_CHAT_ID")) if c}:
+            until = store.get_bot_state(FLOOD_KEY + chat)
+            if until and datetime.fromisoformat(until) > now:
+                notifier.RATE_LIMITED[chat] = (datetime.fromisoformat(until) - now).total_seconds()
+                print(f"Telegram ban on chat {chat} until {until}", file=sys.stderr)
+    except Exception as exc:
+        log_failure("read Telegram bans", exc)
+
+
+def save_flood_bans(now: datetime | None = None) -> None:
+    if not notifier.RATE_LIMITED:
+        return
+    store = SupabaseSync.from_env()
+    if store is None:
+        return
+    now = now or datetime.now(timezone.utc)
+    try:
+        for chat, seconds in notifier.RATE_LIMITED.items():
+            store.set_bot_state(FLOOD_KEY + chat, (now + timedelta(seconds=seconds)).isoformat())
+    except Exception as exc:
+        log_failure("save Telegram bans", exc)
+
+
 def subscriber_filters() -> dict[str, dict]:
     """{chat_id: filters} chosen with /categorias, /tiendas and /minimo (empty on any problem: everyone gets everything)."""
     store = SupabaseSync.from_env()
@@ -659,6 +694,7 @@ def run() -> int:
         priority_config.get("max_per_run", MAX_PRIORITY_UNVERIFIED_PER_RUN), priority_room
     )
     subscribers = refresh_subscribers()
+    load_flood_bans()
     safe_mode = mode.is_safe()
     if safe_mode:
         print("SAFE MODE: only verified offers and price mistakes, nothing sent to subscribers", file=sys.stderr)
@@ -676,6 +712,7 @@ def run() -> int:
         else []
     )
     deactivate_unreachable(subscribers)
+    save_flood_bans()
     record_delivered(delivered)
     delivered_keys: set[str] = set()
     for scored in delivered:
@@ -720,7 +757,7 @@ def run() -> int:
     # and none got through. Candidates that were never sendable (only unverified
     # ones while the daily/per-run quota is spent) are not a Telegram failure, and
     # returning here would skip saving history, the budget and the Supabase mirror.
-    if candidates and attempted and not delivered:
+    if candidates and attempted and not delivered and not notifier.RATE_LIMITED:
         return record_failure("Notification failed: no offer could be delivered to Telegram", reports)
 
     # Only delivered offers are remembered: with thousands of products per scan,

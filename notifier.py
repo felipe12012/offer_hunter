@@ -13,7 +13,9 @@ from models import ScoredDeal
 
 TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
 # Telegram throttles a single chat to ~1 message/second; stay just under it.
-SEND_DELAY_SECONDS = 1.1
+# A channel or group takes about 20 per minute and each offer may go to two of them: space the sends out (a flood ban
+# from Telegram lasted 2.5 h and stopped every offer).
+SEND_DELAY_SECONDS = 2.0
 # Subscribers are different chats, so only Telegram's global limit (~30 messages/s) applies.
 SUBSCRIBER_DELAY_SECONDS = 0.1
 # Each subscriber gets at most this many offers per run (the best ones), and the whole fan-out
@@ -22,6 +24,9 @@ MAX_SUBSCRIBER_MESSAGES_PER_RUN = 35
 SUBSCRIBER_TIME_BUDGET_SECONDS = 300
 # Chats that answered 403 (blocked the bot) during this process. The caller deactivates them.
 UNREACHABLE_CHATS: set[str] = set()
+# Chats Telegram told to wait longer than MAX_RETRY_AFTER_SECONDS (flood ban): chat -> seconds still to wait. Nothing is sent
+# to them for the rest of the run (asking again during a ban can extend it); the caller keeps the ban between runs.
+RATE_LIMITED: dict[str, float] = {}
 # Ceiling per run so a huge sale can't flood the chat. Offers beyond it are not
 # reported as sent, so the caller leaves them unseen and they go out next run.
 MAX_MESSAGES_PER_RUN = 100
@@ -188,19 +193,32 @@ def _post_result(token: str, method: str, **kwargs) -> dict | None:
     """POST to the Telegram Bot API. Returns the parsed answer ({} if it is not JSON) on success and None on
     failure. Waits and retries once when Telegram answers 429 (rate limited)."""
     url = TELEGRAM_API.format(token=token, method=method)
+    body = kwargs.get("json") or kwargs.get("data") or {}
+    chat = str(body["chat_id"]) if body.get("chat_id") is not None else None
+    if chat in RATE_LIMITED:
+        return None
     for attempt in (1, 2):
         try:
             response = requests.post(url, timeout=30, **kwargs)
         except requests.RequestException as exc:
             print(f"Telegram {method} request error: {exc}", file=sys.stderr)
             return None
-        if response.status_code == 429 and attempt == 1:
+        if response.status_code == 429:
             try:
                 wait = float(response.json().get("parameters", {}).get("retry_after", 1))
             except Exception:
                 wait = 1.0
-            time.sleep(min(wait, MAX_RETRY_AFTER_SECONDS))
-            continue
+            if wait > MAX_RETRY_AFTER_SECONDS:
+                if chat is not None:
+                    RATE_LIMITED[chat] = wait
+                print(
+                    f"Telegram {method}: chat {chat} is rate limited for {wait:.0f}s; sending to it stops",
+                    file=sys.stderr,
+                )
+                return None
+            if attempt == 1:
+                time.sleep(wait)
+                continue
         if response.status_code >= 400:
             # Telegram explains the rejection in "description"; without it a
             # failed sendPhoto is just a bare 400 and undiagnosable.
@@ -506,6 +524,9 @@ def send_offers(
     text_messages = 0
     send_started = time.monotonic()
     for index, scored in enumerate(ordered):
+        if chat_id and str(chat_id) in RATE_LIMITED:
+            print(f"Main chat rate limited: the other {len(ordered) - index} offers wait", file=sys.stderr)
+            break
         if index:
             if time.monotonic() - send_started > TELEGRAM_TIME_BUDGET_SECONDS:
                 print(

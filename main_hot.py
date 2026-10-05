@@ -96,6 +96,7 @@ def run() -> int:
         except Exception as exc:
             log_failure("read subscribers", exc)
 
+    main_fast.load_flood_bans()
     delivered = (
         send_offers(
             candidates,
@@ -108,6 +109,7 @@ def run() -> int:
         if candidates
         else []
     )
+    main_fast.save_flood_bans()
     mistakes = sum(1 for offer in delivered if offer.price_error)
     print(
         f"Hot scan: {len(deals)} products, {len(candidates)} to announce, {len(delivered)} delivered "
