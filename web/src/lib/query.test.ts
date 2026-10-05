@@ -20,24 +20,20 @@ function params(query: string) {
   return new URLSearchParams(query);
 }
 
-const COARSE = "2026-10-03T09:30:00.000Z"; // 150 min antes de NOW, redondeado a 10 min
-const FINE = "2026-10-03T11:00:00.000Z"; // 60 min antes de NOW, redondeado a 10 min
-const LIVE_OR = `(web_discount_pct.lt.50,last_seen_at.gte.${FINE})`;
+const SINCE = "2026-10-03T06:00:00.000Z"; // 6 horas antes de NOW, redondeado a 10 min
 
 describe("liveSince", () => {
   it("resta los minutos y redondea a 10 (la URL no cambia en cada petición)", () => {
-    expect(liveSince(150, NOW)).toBe(COARSE);
-    expect(liveSince(60, NOW)).toBe(FINE);
-    expect(liveSince(150, NOW + 60_000)).toBe(liveSince(150, NOW));
+    expect(liveSince(360, NOW)).toBe(SINCE);
+    expect(liveSince(360, NOW + 60_000)).toBe(liveSince(360, NOW));
   });
 });
 
 describe("buildListQuery", () => {
   it("pide solo productos vigentes, sin duplicados entre tiendas, con orden y paginación", () => {
     const p = params(buildListQuery(DEFAULT_FILTERS, NOW));
-    expect(p.get("last_seen_at")).toBe(`gte.${COARSE}`);
-    // los de 50 % o más se refrescan en cada escaneo: con una hora sin verse, ya no están
-    expect(p.get("or")).toBe(LIVE_OR);
+    expect(p.get("last_seen_at")).toBe(`gte.${SINCE}`);
+    expect(p.get("or")).toBeNull(); // sin más condiciones "o": que no se vea un rato no significa agotado
     expect(p.get("dup_rank")).toBe("eq.1");
     expect(p.get("order")).toBe("verified_pct.desc,web_discount_pct.desc,id.asc");
     expect(p.get("limit")).toBe("24");
@@ -59,16 +55,15 @@ describe("buildListQuery", () => {
   });
 
   it("descuento mínimo: sin 'solo verificadas' mira lo verificado o lo anunciado", () => {
-    const p = params(buildListQuery({ ...DEFAULT_FILTERS, min: 50 }, NOW));
-    // PostgREST solo admite un `or`: las dos condiciones van dentro de `and`
-    expect(p.get("and")).toBe(`(or(verified_pct.gte.50,web_discount_pct.gte.50),or(web_discount_pct.lt.50,last_seen_at.gte.${FINE}))`);
-    expect(p.get("or")).toBeNull();
+    expect(params(buildListQuery({ ...DEFAULT_FILTERS, min: 50 }, NOW)).get("or")).toBe(
+      "(verified_pct.gte.50,web_discount_pct.gte.50)",
+    );
   });
 
   it("descuento mínimo con 'solo verificadas' mira solo lo verificado", () => {
     const p = params(buildListQuery({ ...DEFAULT_FILTERS, min: 50, ver: true }, NOW));
     expect(p.get("verified_pct")).toBe("gte.50");
-    expect(p.get("or")).toBe(LIVE_OR); // solo la condición de "sigue a la venta"
+    expect(p.get("or")).toBeNull();
   });
 
   it("'solo verificadas' sin mínimo usa el umbral de verificación", () => {
@@ -90,7 +85,7 @@ describe("buildListQuery", () => {
     const p = params(buildListQuery(f, NOW));
     expect(p.get("select")).not.toContain("*");
     expect(p.get("limit")).toBe("24");
-    expect(p.getAll("or")).toEqual([LIVE_OR]); // nada del usuario llegó a un `or`
+    expect(p.getAll("or")).toEqual([]); // nada del usuario llegó a un `or`
     expect(p.getAll("title_norm").every((value) => /^ilike\.\*[a-z0-9-]+\*$/.test(value))).toBe(true);
     expect(p.get("category_group")).toBeNull();
   });

@@ -1,7 +1,7 @@
 // Construye las consultas a la vista offer_feed (PostgREST). Puro: sin red, sin claves.
 // Todo valor del usuario ya viene validado por filters.ts; aquí solo se codifica.
 import { PAGE_SIZE, queryWords, type Filters, type Sort } from "./filters";
-import { COARSE_END_MINUTES, FINE_END_MINUTES, FINE_MIN_DISCOUNT } from "./live";
+import { ENDED_MINUTES } from "./live";
 import { VERIFIED_MIN_PCT } from "./tiers";
 
 const ROUND_MS = 10 * 60_000; // la hora se redondea para que la URL (y su caché) no cambie en cada petición
@@ -30,13 +30,12 @@ export function liveSince(minutes: number, now: number = Date.now()): string {
   return new Date(rounded).toISOString();
 }
 
-/** Solo lo que sigue a la venta: visto hace poco (los de 50 % o más, que se refrescan en cada escaneo, con menos margen).
- *  `orGroups`: otras condiciones "o" de la consulta; PostgREST solo admite un `or`, así que varias van dentro de `and`. */
+/** Solo lo que sigue a la venta: visto en las últimas horas (ver live.ts: no verlo un rato no es estar agotado).
+ *  `orGroups`: condiciones "o" de la consulta; PostgREST solo admite un `or`, así que varias van dentro de `and`. */
 function applyLive(params: URLSearchParams, orGroups: string[], now: number): void {
-  params.set("last_seen_at", `gte.${liveSince(COARSE_END_MINUTES, now)}`);
-  const groups = [...orGroups, `web_discount_pct.lt.${FINE_MIN_DISCOUNT},last_seen_at.gte.${liveSince(FINE_END_MINUTES, now)}`];
-  if (groups.length === 1) params.set("or", `(${groups[0]})`);
-  else params.set("and", `(${groups.map((group) => `or(${group})`).join(",")})`);
+  params.set("last_seen_at", `gte.${liveSince(ENDED_MINUTES, now)}`);
+  if (orGroups.length === 1) params.set("or", `(${orGroups[0]})`);
+  else if (orGroups.length > 1) params.set("and", `(${orGroups.map((group) => `or(${group})`).join(",")})`);
 }
 
 /** `excludeIds`: productos que la página ya muestra en otro bloque (el carrusel), para no repetirlos en el listado. */

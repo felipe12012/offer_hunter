@@ -1,29 +1,21 @@
-// ¿Una oferta sigue a la venta? Lo deducimos de cuándo la vimos por última vez.
+// ¿Una oferta sigue a la venta? Por ahora solo lo damos por terminado tras MUCHO tiempo sin verla.
 //
-// El pipeline refresca `last_seen_at` en cada escaneo para los productos con 50 % de descuento o más (y los
-// anunciados en los últimos 3 días): si llevan más de una hora sin verse, ya no están en la tienda. Los demás
-// se refrescan una vez por hora, así que se les da más margen.
+// Un producto que deja de aparecer en nuestros escaneos NO está necesariamente agotado: leemos las primeras páginas de
+// cada listado (Falabella, ~18.000 de 26.000 productos) y el orden cambia entre un escaneo y otro, de modo que un
+// producto con stock sale y entra. Una primera versión lo daba por terminado a la hora sin verlo y se equivocó en 2 de
+// cada 4 casos. Marcarlo antes exige comprobarlo en la tienda (ver docs/availability.md).
 
-/** Desde este descuento un producto se refresca en cada escaneo. */
-export const FINE_MIN_DISCOUNT = 50;
-export const FINE_END_MINUTES = 60;
-export const COARSE_END_MINUTES = 150;
+/** Tiempo sin verse a partir del cual se oculta de los listados y la ficha lo marca como terminado. */
+export const ENDED_MINUTES = 360;
 /** Pasado este tiempo la ficha no muestra el producto: solo avisa de que ya no está. */
 export const GONE_HOURS = 24;
 
 export type Availability = { ended: boolean; minutes: number };
 
-export function endMinutes(webDiscountPct: number): number {
-  return webDiscountPct >= FINE_MIN_DISCOUNT ? FINE_END_MINUTES : COARSE_END_MINUTES;
-}
-
 /** `ended`: lleva más tiempo sin verse del que cabe en un producto que sigue a la venta. */
-export function availability(
-  row: { web_discount_pct: number; last_seen_at: string },
-  now: number = Date.now(),
-): Availability {
+export function availability(row: { last_seen_at: string }, now: number = Date.now()): Availability {
   const seen = Date.parse(row.last_seen_at);
   if (Number.isNaN(seen)) return { ended: true, minutes: Number.POSITIVE_INFINITY };
   const minutes = Math.max(0, Math.round((now - seen) / 60_000));
-  return { ended: minutes > endMinutes(row.web_discount_pct), minutes };
+  return { ended: minutes > ENDED_MINUTES, minutes };
 }
