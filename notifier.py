@@ -4,6 +4,7 @@ import os
 import re
 import sys
 import time
+from urllib.parse import urlsplit
 
 import requests
 
@@ -32,6 +33,10 @@ MAX_UNVERIFIED_PER_RUN = 30
 MAX_PRIORITY_UNVERIFIED_PER_RUN = 40
 # Possible pricing mistakes are announced first and outside every quota above, but not without limit.
 MAX_PRICE_ERRORS_PER_RUN = 20
+# Wall-clock ceiling for sending to the owner's chats. A run that sent 112 offers took 27 minutes (photos Telegram
+# could not fetch were downloaded and uploaded once per destination) and was killed by the job timeout before it
+# saved anything. What is not sent stays unseen and goes out in the next run.
+TELEGRAM_TIME_BUDGET_SECONDS = 420
 # A verified discount at or above this always goes first, priority or not.
 BIG_VERIFIED_PCT = 60
 MAX_CAPTION_LENGTH = 1024
@@ -174,15 +179,20 @@ def format_offer(
 
 
 def _post(token: str, method: str, **kwargs) -> bool:
-    """POST to the Telegram Bot API. Returns True on success. Waits and retries
-    once when Telegram answers 429 (rate limited)."""
+    """POST to the Telegram Bot API. Returns True on success."""
+    return _post_result(token, method, **kwargs) is not None
+
+
+def _post_result(token: str, method: str, **kwargs) -> dict | None:
+    """POST to the Telegram Bot API. Returns the parsed answer ({} if it is not JSON) on success and None on
+    failure. Waits and retries once when Telegram answers 429 (rate limited)."""
     url = TELEGRAM_API.format(token=token, method=method)
     for attempt in (1, 2):
         try:
             response = requests.post(url, timeout=30, **kwargs)
         except requests.RequestException as exc:
             print(f"Telegram {method} request error: {exc}", file=sys.stderr)
-            return False
+            return None
         if response.status_code == 429 and attempt == 1:
             try:
                 wait = float(response.json().get("parameters", {}).get("retry_after", 1))
@@ -204,9 +214,36 @@ def _post(token: str, method: str, **kwargs) -> bool:
                 body = kwargs.get("json") or kwargs.get("data") or {}
                 if body.get("chat_id") is not None:
                     UNREACHABLE_CHATS.add(str(body["chat_id"]))
-            return False
-        return True
-    return False
+            return None
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = {}
+        return payload if isinstance(payload, dict) else {}
+    return None
+
+
+# A photo Telegram already holds can be sent to any other chat of this bot by its file_id: no new download by
+# Telegram, no upload from us. The same offer goes to up to 4 destinations, so this is most of the work saved.
+_PHOTO_FILE_IDS: dict[str, str] = {}
+# Hosts whose image URLs Telegram could not fetch URL_FAILURES_BEFORE_SKIP times: from then on those photos are
+# downloaded and uploaded directly instead of failing first (each failed attempt cost ~1-2 s).
+URL_FAILURES_BEFORE_SKIP = 3
+_URL_FAILURES: dict[str, int] = {}
+
+
+def reset_photo_cache() -> None:
+    _PHOTO_FILE_IDS.clear()
+    _URL_FAILURES.clear()
+
+
+def _remember_photo(image_url: str, payload: dict | None) -> None:
+    try:
+        photos = (payload or {}).get("result", {}).get("photo") or []
+        if photos:
+            _PHOTO_FILE_IDS[image_url] = photos[-1]["file_id"]
+    except (AttributeError, KeyError, IndexError, TypeError):
+        pass
 
 
 def _download_image(url: str) -> tuple[bytes, str] | None:
@@ -285,13 +322,26 @@ def _send_one(
         form_extra["reply_markup"] = json.dumps(markup)
 
     if image_url:
-        # 1) let Telegram fetch the image itself (cheapest).
-        if _post(
+        # 0) a photo Telegram already has (this offer went to another chat first): send it by id.
+        file_id = _PHOTO_FILE_IDS.get(image_url)
+        if file_id and _post(
             token,
             "sendPhoto",
-            json={"chat_id": chat_id, "photo": image_url, "caption": caption, "parse_mode": "HTML", **extra},
+            json={"chat_id": chat_id, "photo": file_id, "caption": caption, "parse_mode": "HTML", **extra},
         ):
             return "photo"
+        # 1) let Telegram fetch the image itself (cheapest), unless it has already failed for this host.
+        host = urlsplit(image_url).netloc
+        if _URL_FAILURES.get(host, 0) < URL_FAILURES_BEFORE_SKIP:
+            result = _post_result(
+                token,
+                "sendPhoto",
+                json={"chat_id": chat_id, "photo": image_url, "caption": caption, "parse_mode": "HTML", **extra},
+            )
+            if result is not None:
+                _remember_photo(image_url, result)
+                return "photo"
+            _URL_FAILURES[host] = _URL_FAILURES.get(host, 0) + 1
         # 2) some CDNs refuse Telegram's fetcher or serve formats it rejects:
         #    download the image ourselves, convert what it can't take, and upload.
         downloaded = _download_image(image_url)
@@ -301,12 +351,14 @@ def _send_one(
                 converted = _to_jpeg(image)
                 if converted is not None:
                     image, ext = converted, "jpg"
-            if _post(
+            result = _post_result(
                 token,
                 "sendPhoto",
                 data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML", **form_extra},
                 files={"photo": (f"offer.{ext}", image)},
-            ):
+            )
+            if result is not None:
+                _remember_photo(image_url, result)
                 return "photo"
 
     # 3) never lose an offer just because its picture failed.
@@ -450,8 +502,16 @@ def send_offers(
     delivered: list[ScoredDeal] = []
     photo_messages = 0
     text_messages = 0
+    send_started = time.monotonic()
     for index, scored in enumerate(ordered):
         if index:
+            if time.monotonic() - send_started > TELEGRAM_TIME_BUDGET_SECONDS:
+                print(
+                    f"Telegram time budget ({TELEGRAM_TIME_BUDGET_SECONDS}s) spent after {len(delivered)} offers; "
+                    f"the other {len(ordered) - index} wait for the next run",
+                    file=sys.stderr,
+                )
+                break
             time.sleep(SEND_DELAY_SECONDS)
 
         result = ""

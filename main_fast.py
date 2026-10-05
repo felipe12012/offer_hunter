@@ -474,6 +474,19 @@ def refresh_subscribers() -> list[int]:
     return subscribers
 
 
+def record_delivered(delivered: list[ScoredDeal]) -> None:
+    """Write what was just sent to Supabase at once (offer_sent). The rest of the run (state files, the full scan
+    mirror) happens later and a run killed in between would otherwise send the same offers again; the next run
+    reads these keys (remote_sent_keys). Repeating it in mirror_to_supabase is harmless: duplicates are ignored."""
+    store = SupabaseSync.from_env() if delivered else None
+    if store is None:
+        return
+    try:
+        store.record_sent(delivered)
+    except Exception as exc:
+        log_failure("record delivered offers", exc)
+
+
 def deactivate_unreachable(subscribers: list[int]) -> None:
     """Subscribers who blocked the bot (Telegram answered 403) stop being messaged."""
     gone = [chat for chat in subscribers if str(chat) in notifier.UNREACHABLE_CHATS]
@@ -643,6 +656,7 @@ def run() -> int:
         else []
     )
     deactivate_unreachable(subscribers)
+    record_delivered(delivered)
     delivered_keys: set[str] = set()
     for scored in delivered:
         key = deal_key(scored.deal)

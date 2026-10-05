@@ -1,5 +1,6 @@
 import pytest
 
+import notifier
 from sources import httpclient, nextdata, progress
 
 
@@ -9,6 +10,8 @@ def _fresh_scan_state():
     progress.reset()
     httpclient.reset_stats()
     nextdata.reset_blocks()
+    notifier.reset_photo_cache()
     yield
     progress.reset()
     nextdata.reset_blocks()
+    notifier.reset_photo_cache()

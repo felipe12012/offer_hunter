@@ -85,6 +85,8 @@ jobs:
         run: python main_fast.py ${{ inputs.selftest && '--selftest' || '' }}
 
       - name: Commit updated data files
+        # always(): also after a timeout/cancellation, so state the run already wrote is not thrown away.
+        if: always()
         # Both tiers (HTTP and browser) change data/*.json at the same time; this merges instead of rebasing.
         run: bash scripts/commit_state.sh
 
