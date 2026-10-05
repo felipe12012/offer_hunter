@@ -105,3 +105,75 @@ def test_fetch_store_deals_raises_when_every_keyword_fails():
 
     with pytest.raises(RuntimeError):
         vtex.fetch_store_deals(CFG, {"keywords": ["a", "b"]}, fetch=boom, sleep=lambda s: None)
+
+
+SONY = StoreConfig(store="sony", base_url="https://store.sony.cl", use_intelligent_search=True)
+
+
+def test_intelligent_search_url_points_at_the_io_endpoint():
+    url = vtex.intelligent_search_url("https://store.sony.cl", "camara", 0)
+
+    assert url == (
+        "https://store.sony.cl/api/io/_v/api/intelligent-search/product_search"
+        f"?query=camara&count={vtex.PAGE_SIZE}&page=1"
+    )
+
+
+def test_intelligent_search_url_advances_the_page_from_the_start_offset():
+    url = vtex.intelligent_search_url("https://store.sony.cl", "camara", vtex.PAGE_SIZE * 2)
+
+    assert url.endswith("&page=3")
+
+
+def test_fetch_intelligent_page_reads_the_products_key(monkeypatch):
+    monkeypatch.setattr(vtex, "_get_json", lambda url: {"products": [_product()]})
+
+    assert vtex.fetch_intelligent_page("https://store.sony.cl", "camara", 0) == [_product()]
+
+
+def test_fetch_intelligent_page_treats_a_missing_products_key_as_empty(monkeypatch):
+    monkeypatch.setattr(vtex, "_get_json", lambda url: {})
+
+    assert vtex.fetch_intelligent_page("https://store.sony.cl", "camara", 0) == []
+
+
+def test_fetch_store_deals_uses_intelligent_search_when_configured(monkeypatch):
+    calls = []
+
+    def fake_intelligent(base_url, keyword, start):
+        calls.append(keyword)
+        return [_product(product_id="9")] if start == 0 else []
+
+    def fake_classic(base_url, keyword, start):
+        raise AssertionError("classic catalogue must not be used for an IO store")
+
+    monkeypatch.setattr(vtex, "fetch_intelligent_page", fake_intelligent)
+    monkeypatch.setattr(vtex, "fetch_page", fake_classic)
+
+    deals = vtex.fetch_store_deals(SONY, {"keywords": ["camara"]}, sleep=lambda s: None)
+
+    assert calls == ["camara"]
+    assert [d.id for d in deals] == ["sony:9"]
+
+
+def test_fetch_store_deals_uses_the_classic_page_by_default(monkeypatch):
+    def fake_classic(base_url, keyword, start):
+        return [_product(product_id="1")] if start == 0 else []
+
+    def fake_intelligent(base_url, keyword, start):
+        raise AssertionError("intelligent search is opt-in")
+
+    monkeypatch.setattr(vtex, "fetch_page", fake_classic)
+    monkeypatch.setattr(vtex, "fetch_intelligent_page", fake_intelligent)
+
+    deals = vtex.fetch_store_deals(CFG, {"keywords": ["zapatilla"]}, sleep=lambda s: None)
+
+    assert [d.id for d in deals] == ["asics:1"]
+
+
+def test_intelligent_search_relative_link_is_made_absolute():
+    product = _product(link="/sel1224g/p")
+
+    deals = vtex.parse_products([product], SONY, "tecnologia")
+
+    assert deals[0].url == "https://store.sony.cl/sel1224g/p"

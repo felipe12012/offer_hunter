@@ -5,12 +5,18 @@ price (``Price``), the crossed-out price (``ListPrice``) and stock
 (``AvailableQuantity``) per seller, so no browser is needed. Used by Asics and
 Reebok Chile. The API caps a page at 50 products, and a search term the store
 does not carry returns an empty list rather than an error.
+
+Some VTEX IO stores (Sony Chile) keep the classic catalogue API but return an
+empty list from it; their search is served by the Intelligent Search API instead
+(``/api/io/_v/api/intelligent-search/product_search?query=...``), which returns
+the same per-product shape (``items[].sellers[].commertialOffer``). Set
+``StoreConfig.use_intelligent_search`` for those stores.
 """
 import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from urllib.parse import quote
+from urllib.parse import quote, urljoin
 
 import requests
 
@@ -37,6 +43,9 @@ REQUEST_DELAY_SECONDS = 0.3
 class StoreConfig:
     store: str
     base_url: str
+    # VTEX IO stores whose classic catalogue API returns an empty array; search via
+    # the Intelligent Search endpoint instead (see module docstring).
+    use_intelligent_search: bool = False
 
 
 def _to_int(value) -> int:
@@ -53,19 +62,38 @@ def search_url(base_url: str, keyword: str, start: int) -> str:
     )
 
 
-def fetch_page(base_url: str, keyword: str, start: int) -> list[dict]:
-    url = search_url(base_url, keyword, start)
+def intelligent_search_url(base_url: str, keyword: str, start: int) -> str:
+    page = start // PAGE_SIZE + 1
+    return (
+        f"{base_url}/api/io/_v/api/intelligent-search/product_search"
+        f"?query={quote(keyword)}&count={PAGE_SIZE}&page={page}"
+    )
+
+
+def _get_json(url: str):
     last_error: Exception | None = None
     for attempt in range(FETCH_ATTEMPTS):
         try:
             response = httpclient.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT_SECONDS)
             response.raise_for_status()
-            data = response.json()
-            return data if isinstance(data, list) else []
+            return response.json()
         except Exception as exc:  # noqa: BLE001 - retried, then surfaced
             last_error = exc
             time.sleep(1 + attempt)
     raise RuntimeError(f"GET {url} failed after {FETCH_ATTEMPTS} attempts: {last_error}")
+
+
+def fetch_page(base_url: str, keyword: str, start: int) -> list[dict]:
+    data = _get_json(search_url(base_url, keyword, start))
+    return data if isinstance(data, list) else []
+
+
+def fetch_intelligent_page(base_url: str, keyword: str, start: int) -> list[dict]:
+    data = _get_json(intelligent_search_url(base_url, keyword, start))
+    if isinstance(data, dict):
+        products = data.get("products")
+        return products if isinstance(products, list) else []
+    return data if isinstance(data, list) else []
 
 
 def _deal_from_product(product: dict, cfg: StoreConfig, category: str) -> Deal | None:
@@ -94,6 +122,9 @@ def _deal_from_product(product: dict, cfg: StoreConfig, category: str) -> Deal |
     link = product.get("link") or ""
     if not title or not link:
         return None
+    # Classic stores return an absolute link; Intelligent Search returns a
+    # root-relative one (``/sel1224g/p``). urljoin leaves an absolute URL intact.
+    url = urljoin(cfg.base_url + "/", link)
 
     images = item.get("images") or []
     image_url = images[0].get("imageUrl", "") if images and isinstance(images[0], dict) else ""
@@ -102,7 +133,7 @@ def _deal_from_product(product: dict, cfg: StoreConfig, category: str) -> Deal |
     return Deal(
         id=f"{cfg.store}:{product_id}",
         title=title,
-        url=link,
+        url=url,
         store=cfg.store,
         category=category,
         price=price,
@@ -127,9 +158,11 @@ def parse_products(products: list[dict], cfg: StoreConfig, category: str) -> lis
 def fetch_store_deals(
     cfg: StoreConfig,
     watchlist: dict,
-    fetch=fetch_page,
+    fetch=None,
     sleep=time.sleep,
 ) -> list[Deal]:
+    if fetch is None:
+        fetch = fetch_intelligent_page if cfg.use_intelligent_search else fetch_page
     max_pages = watchlist.get("scan", {}).get("max_vtex_pages", DEFAULT_MAX_PAGES)
     deals: dict[str, Deal] = {}
     failures = 0

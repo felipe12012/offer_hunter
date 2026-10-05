@@ -50,6 +50,16 @@ from sources.tottus import fetch_deals as fetch_tottus_deals
 from sources.tricot import fetch_deals as fetch_tricot_deals
 from sources.tusmascotas import fetch_deals as fetch_tusmascotas_deals
 from sources.vans import fetch_deals as fetch_vans_deals
+from sources.ansaldo import fetch_deals as fetch_ansaldo_deals
+from sources.contrapunto import fetch_deals as fetch_contrapunto_deals
+from sources.coreanachile import fetch_deals as fetch_coreanachile_deals
+from sources.fashionspark import fetch_deals as fetch_fashionspark_deals
+from sources.hm import fetch_deals as fetch_hm_deals
+from sources.outletdelcafe import fetch_deals as fetch_outletdelcafe_deals
+from sources.reuse import fetch_deals as fetch_reuse_deals
+from sources.sony import fetch_deals as fetch_sony_deals
+from sources.wayu import fetch_deals as fetch_wayu_deals
+from sources.zapatos import fetch_deals as fetch_zapatos_deals
 
 # The single roster of registered sources as (store, module attribute name).
 # The attribute is resolved at call time so tests can monkeypatch
@@ -81,6 +91,16 @@ SOURCE_FETCHERS = [
     ("tricot", "fetch_tricot_deals"),
     ("laikamascotas", "fetch_laikamascotas_deals"),
     ("tusmascotas", "fetch_tusmascotas_deals"),
+    ("coreanachile", "fetch_coreanachile_deals"),
+    ("wayu", "fetch_wayu_deals"),
+    ("reuse", "fetch_reuse_deals"),
+    ("fashionspark", "fetch_fashionspark_deals"),
+    ("ansaldo", "fetch_ansaldo_deals"),
+    ("contrapunto", "fetch_contrapunto_deals"),
+    ("outletdelcafe", "fetch_outletdelcafe_deals"),
+    ("zapatos", "fetch_zapatos_deals"),
+    ("hm", "fetch_hm_deals"),
+    ("sony", "fetch_sony_deals"),
 ]
 SOURCE_NAMES = [attr for _store, attr in SOURCE_FETCHERS]
 
