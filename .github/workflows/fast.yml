@@ -49,16 +49,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # Falabella, Sodimac and Hites are read over plain HTTP. Chromium (~4 min
-      # to install) is only needed by the browser stores (Paris/Ripley/Tottus and
-      # the shoe brands). Nike is behind Cloudflare and only renders with
-      # patchright, so that browser is installed too. Set the repo variable
-      # INSTALL_BROWSER=true to enable.
-      - name: Install browsers
-        if: ${{ vars.INSTALL_BROWSER == 'true' }}
-        run: |
-          playwright install --with-deps chromium
-          patchright install chromium
+      # Fast tier is HTTP-only (Sodimac, Falabella, Hites, the Shopify/VTEX/HTML
+      # stores). The browser stores run in browser.yml on their own schedule, so
+      # no Chromium is installed here and a scan stays well under 15 minutes.
 
       - name: Import JSON state into Supabase
         if: ${{ inputs.migrate == true }}
@@ -69,6 +62,8 @@ jobs:
 
       - name: Run pipeline
         env:
+          # HTTP-only tier: skip the browser stores (they run in browser.yml).
+          SCAN_TIER: http
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           # Optional second destination for big discounts (alerts.alert_chat_min_pct)

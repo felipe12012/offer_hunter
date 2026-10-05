@@ -4,6 +4,7 @@ from pathlib import Path
 import yaml
 
 WORKFLOW_PATH = Path(__file__).parent.parent / ".github" / "workflows" / "fast.yml"
+BROWSER_WORKFLOW_PATH = Path(__file__).parent.parent / ".github" / "workflows" / "browser.yml"
 
 
 def test_workflow_yaml_is_valid_and_scheduled_every_15_minutes_off_peak():
@@ -23,10 +24,15 @@ def test_workflow_uses_required_secrets():
         assert f"secrets.{secret_name}" in content
 
 
-def test_workflow_installs_playwright_chromium():
-    content = WORKFLOW_PATH.read_text(encoding="utf-8")
-    assert "playwright install" in content
-    assert "chromium" in content
+def test_fast_tier_runs_http_only_and_browser_tier_installs_chromium():
+    fast = WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert "SCAN_TIER: http" in fast
+    assert "playwright install" not in fast          # browsers moved out of the fast tier
+
+    browser = BROWSER_WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert "SCAN_TIER: browser" in browser
+    assert "playwright install" in browser
+    assert "chromium" in browser
 
 
 def test_workflow_commits_data_files():

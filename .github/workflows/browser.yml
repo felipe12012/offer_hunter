@@ -1,0 +1,78 @@
+name: Browser Tier Deal Scan
+
+on:
+  schedule:
+    # Every 30 minutes, offset from the fast tier so the two never run together.
+    - cron: "9,39 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: browser-tier-scan
+  cancel-in-progress: false
+
+jobs:
+  run-browser-stores:
+    runs-on: ubuntu-latest
+    environment: env
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # The browser stores (Paris/Ripley/Tottus, the shoe brands, pharmacies and
+      # Antartica). Nike is behind Cloudflare and only renders with patchright.
+      - name: Install browsers
+        run: |
+          playwright install --with-deps chromium
+          patchright install chromium
+
+      - name: Run pipeline (browser tier)
+        env:
+          SCAN_TIER: browser
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TELEGRAM_ALERT_CHAT_ID: ${{ secrets.TELEGRAM_ALERT_CHAT_ID }}
+          TELEGRAM_ALERT_THREAD_ID: ${{ secrets.TELEGRAM_ALERT_THREAD_ID }}
+          TELEGRAM_PUBLIC_CHAT_ID: ${{ secrets.TELEGRAM_PUBLIC_CHAT_ID }}
+          SCRAPER_PROXY: ${{ secrets.SCRAPER_PROXY }}
+        run: python main_fast.py
+
+      - name: Commit updated data files
+        run: |
+          git config user.name "cyberday-hunter"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/seen_items.json data/price_history.json data/alert_budget.json
+          git diff --cached --quiet || git commit -m "chore: update seen items and price history"
+          git pull --rebase origin main
+          git push
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          reason="$(head -c 400 run_status.txt 2>/dev/null || true)"
+          header="⚠️ cyberday-hunter (browser tier): el pipeline falló."
+          logs="Logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ -n "$reason" ]; then
+            text="$(printf '%s\n%s\n%s' "$header" "Motivo: $reason" "$logs")"
+          else
+            text="$(printf '%s\n%s' "$header" "$logs")"
+          fi
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${text}"

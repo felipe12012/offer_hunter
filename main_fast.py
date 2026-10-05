@@ -112,6 +112,24 @@ SOURCE_FETCHERS = [
 ]
 SOURCE_NAMES = [attr for _store, attr in SOURCE_FETCHERS]
 
+# Stores that launch a headless browser (Playwright/patchright). They are the
+# slow half of the roster, so CI runs them on their own schedule (browser.yml)
+# and the 15-minute fast tier (SCAN_TIER=http) skips them, keeping each scan well
+# under the cron interval. Unset SCAN_TIER scans everything (local/dev default).
+BROWSER_STORES = {
+    "antartica", "converse", "cruzverde", "fila", "newbalance", "nike",
+    "paris", "puma", "ripley", "salcobrand", "skechers", "tottus",
+}
+
+
+def tier_allows(store: str, tier: str | None = None) -> bool:
+    tier = (tier if tier is not None else os.environ.get("SCAN_TIER") or "").strip().lower()
+    if tier == "http":
+        return store not in BROWSER_STORES
+    if tier == "browser":
+        return store in BROWSER_STORES
+    return True
+
 # Stores that need a browser and launch one Chromium per keyword. Handed the
 # full 31-keyword watchlist they would pay ~30 browser launches each, so they
 # get only the queries that match what they sell.
@@ -256,7 +274,9 @@ def scan_stores(watchlist: dict) -> tuple[list[Deal], list[StoreReport]]:
     # same reasoning as job-hunter-agent/main.py.
     disabled = {name.lower() for name in watchlist.get("disabled_stores", [])}
     source_fetchers = [
-        (store, globals()[attr]) for store, attr in SOURCE_FETCHERS if store not in disabled
+        (store, globals()[attr])
+        for store, attr in SOURCE_FETCHERS
+        if store not in disabled and tier_allows(store)
     ]
     if disabled:
         print(f"Skipping disabled stores: {', '.join(sorted(disabled))}", file=sys.stderr)
