@@ -51,6 +51,14 @@ export type Mistake = {
   sent_at: string;
 };
 
+/** Lo que la propia tienda dice de un producto (offer_availability, la escribe verify_offers.py). */
+export type StoreStatus = {
+  available: boolean;
+  price: number | null;
+  detail: string | null;
+  checked_at: string;
+};
+
 export type MistakeItem = {
   mistake: Mistake;
   /** El producto hoy en el catálogo; null si ya no se ve. */

@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { DealGrid } from "@/components/DealCard";
 import { DiscountTag, VerifiedStamp } from "@/components/DiscountTag";
 import { PriceChart } from "@/components/PriceChart";
-import { getHistory, getProduct, getRelated, getSiblings } from "@/lib/data";
+import { getHistory, getProduct, getRelated, getSiblings, getStoreStatus } from "@/lib/data";
 import { explainDeal } from "@/lib/explain";
 import { agoFrom, clp, groupName, storeName, subName } from "@/lib/format";
 import { availability, GONE_HOURS } from "@/lib/live";
@@ -46,7 +46,15 @@ export default async function ProductPage({ params }: { params: Params }) {
     );
   }
 
-  const [history, related, siblings] = await Promise.all([getHistory(row), getRelated(row), getSiblings(row)]);
+  const [history, related, siblings, storeStatus] = await Promise.all([
+    getHistory(row),
+    getRelated(row),
+    getSiblings(row),
+    getStoreStatus(row.id),
+  ]);
+  // La tienda dice que no tiene stock: más fiable que deducirlo de que dejó de aparecer.
+  const soldOut = storeStatus?.available === false;
+  const ended = status.ended || soldOut;
   const view = dealView(row);
   const reasons = explainDeal(row);
   const hasList = row.list_price > row.price;
@@ -73,8 +81,8 @@ export default async function ProductPage({ params }: { params: Params }) {
       </nav>
 
       <div className="grid gap-8 md:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] md:gap-12">
-        <div className={`photo relative border border-line ${status.ended ? "ended" : ""}`}>
-          {status.ended ? <span className="ended-badge">Oferta terminada</span> : null}
+        <div className={`photo relative border border-line ${ended ? "ended" : ""}`}>
+          {ended ? <span className="ended-badge">{soldOut ? "Agotado" : "Oferta terminada"}</span> : null}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={row.image_url} alt={row.title} referrerPolicy="no-referrer" width={600} height={600} />
           <div className="absolute left-3 top-3">
@@ -82,11 +90,20 @@ export default async function ProductPage({ params }: { params: Params }) {
           </div>
         </div>
 
-        <div className={status.ended ? "ended" : undefined}>
-          {status.ended ? (
+        <div className={ended ? "ended" : undefined}>
+          {ended ? (
             <p role="status" className="mb-3 border border-ink bg-claim-bg px-3 py-2 font-semibold">
-              Oferta terminada o agotada: no la vemos en la tienda desde {agoFrom(row.last_seen_at)}. El
-              precio de abajo fue el último que vimos.
+              {soldOut && storeStatus ? (
+                <>
+                  Agotado: la tienda lo marca sin stock (revisado {agoFrom(storeStatus.checked_at)}). El precio de abajo fue el
+                  último que vimos.
+                </>
+              ) : (
+                <>
+                  Oferta terminada o agotada: no la vemos en la tienda desde {agoFrom(row.last_seen_at)}. El precio de abajo
+                  fue el último que vimos.
+                </>
+              )}
             </p>
           ) : null}
           <p className="text-muted">{storeName(row.store)}</p>
@@ -96,10 +113,10 @@ export default async function ProductPage({ params }: { params: Params }) {
             <span className="price text-5xl leading-none">{clp(row.price)}</span>
             {hasList ? <s className="text-lg text-muted">{clp(row.list_price)}</s> : null}
           </p>
-          {hasList && !status.ended ? <p className="mt-2 text-lg">Ahorras {clp(row.saving)}</p> : null}
+          {hasList && !ended ? <p className="mt-2 text-lg">Ahorras {clp(row.saving)}</p> : null}
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            {status.ended ? null : <VerifiedStamp verified={view.verified} showUnverified />}
+            {ended ? null : <VerifiedStamp verified={view.verified} showUnverified />}
             <span className="text-sm text-muted">Actualizado {agoFrom(row.last_seen_at)}</span>
           </div>
 
@@ -109,7 +126,7 @@ export default async function ProductPage({ params }: { params: Params }) {
             rel="noopener noreferrer nofollow"
             className="mt-6 inline-block bg-ink px-6 py-3 text-lg font-semibold text-paper hover:opacity-90"
           >
-            {status.ended ? "Revisar en" : "Ver en"} {storeName(row.store)}
+            {ended ? "Revisar en" : "Ver en"} {storeName(row.store)}
           </a>
           <p className="mt-2 max-w-md text-sm text-muted">
             Se abre la tienda en otra pestaña. Confirma el precio ahí antes de comprar.

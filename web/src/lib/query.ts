@@ -142,6 +142,15 @@ export function buildByIdsQuery(ids: string[]): string {
   return params.toString();
 }
 
+export function buildAvailabilityQuery(id: string): string | null {
+  if (!isValidProductId(id)) return null;
+  const params = new URLSearchParams();
+  params.set("select", "available,price,detail,checked_at");
+  params.set("product_id", `eq.${id}`);
+  params.set("limit", "1");
+  return params.toString();
+}
+
 export function buildHistoryQuery(id: string): string {
   const params = new URLSearchParams();
   params.set("select", "observed_at,price,list_price");

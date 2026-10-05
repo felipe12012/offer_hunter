@@ -7,6 +7,7 @@ import "server-only";
 import { FIXTURE_ROWS } from "./fixtures";
 import { DEFAULT_FILTERS, PAGE_SIZE, queryWords, type Filters } from "./filters";
 import {
+  buildAvailabilityQuery,
   buildByIdsQuery,
   buildHistoryQuery,
   buildListQuery,
@@ -19,7 +20,7 @@ import {
 } from "./query";
 import { hasCredentials, rest, SupabaseConfigError } from "./supabase";
 import { VERIFIED_MIN_PCT } from "./tiers";
-import type { FeedRow, FeedStats, Mistake, MistakeItem, PricePoint } from "./types";
+import type { FeedRow, FeedStats, Mistake, MistakeItem, PricePoint, StoreStatus } from "./types";
 import { availability } from "./live";
 
 export const REVALIDATE_SECONDS = 120;
@@ -157,6 +158,19 @@ export async function getHistory(row: FeedRow): Promise<PricePoint[]> {
     revalidate: REVALIDATE_SECONDS,
   });
   return rows;
+}
+
+/** Lo que la tienda dice de este producto (¿agotado?), si el verificador ya lo revisó. */
+export async function getStoreStatus(id: string): Promise<StoreStatus | null> {
+  const query = buildAvailabilityQuery(id);
+  if (!query || fixtureMode()) return null;
+  requireCredentials();
+  try {
+    const { rows } = await rest<StoreStatus[]>(`offer_availability?${query}`, { revalidate: 60 });
+    return rows[0] ?? null;
+  } catch {
+    return null; // dato accesorio: sin él la ficha se ve igual (solo sin el aviso de "agotado")
+  }
 }
 
 /** La misma publicación en otra tienda de la cadena (mismo código), con su precio. */

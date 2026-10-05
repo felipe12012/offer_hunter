@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { DEFAULT_FILTERS, parseFilters } from "./filters";
 import {
+  buildAvailabilityQuery,
   buildByIdsQuery,
   buildHistoryQuery,
   buildMistakesQuery,
@@ -190,5 +191,19 @@ describe("página Cyber", () => {
 
   it("productos por id: sin ids válidos la consulta no devuelve nada ni falla", () => {
     expect(params(buildByIdsQuery(["x"])).get("id")).toBe("in.()");
+  });
+});
+
+
+describe("estado según la tienda", () => {
+  it("pide una fila de offer_availability por id exacto", () => {
+    const p = params(buildAvailabilityQuery("falabella:123") ?? "");
+    expect(p.get("product_id")).toBe("eq.falabella:123");
+    expect(p.get("limit")).toBe("1");
+    expect(p.get("select")).toBe("available,price,detail,checked_at");
+  });
+
+  it("un id inválido no genera consulta", () => {
+    expect(buildAvailabilityQuery("x),(or=1")).toBeNull();
   });
 });
