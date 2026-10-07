@@ -1,10 +1,12 @@
 import { buildChart } from "@/lib/chart";
 import { clp, shortDate } from "@/lib/format";
 import type { PricePoint } from "@/lib/types";
+import { priceStats } from "@/lib/verdict";
 
 /** Historial de precios: SVG propio (sin librerías), línea escalonada. */
 export function PriceChart({ points, endAt }: { points: PricePoint[]; endAt?: string }) {
   const chart = buildChart(points, { endAt });
+  const stats = priceStats(points);
 
   if (points.length === 0) {
     return <p className="text-muted">Todavía no hay precios registrados para este producto.</p>;
@@ -19,6 +21,26 @@ export function PriceChart({ points, endAt }: { points: PricePoint[]; endAt?: st
 
   return (
     <figure>
+      {stats && points.length > 1 ? (
+        <dl className="mb-3 grid max-w-2xl grid-cols-2 gap-px border border-line bg-line text-sm sm:grid-cols-4">
+          <div className="bg-surface px-3 py-2">
+            <dt className="text-muted">Hoy</dt>
+            <dd className="price text-xl">{clp(stats.current)}</dd>
+          </div>
+          <div className="bg-surface px-3 py-2">
+            <dt className="text-muted">Mínimo registrado</dt>
+            <dd className="price text-xl">{clp(stats.min)}</dd>
+          </div>
+          <div className="bg-surface px-3 py-2">
+            <dt className="text-muted">Máximo registrado</dt>
+            <dd className="price text-xl">{clp(stats.max)}</dd>
+          </div>
+          <div className="bg-surface px-3 py-2">
+            <dt className="text-muted">Frente al mínimo</dt>
+            <dd className="text-xl font-semibold">{stats.aboveMinPct === 0 ? "En el mínimo" : `+${stats.aboveMinPct}%`}</dd>
+          </div>
+        </dl>
+      ) : null}
       <svg
         viewBox={`0 0 ${chart.width} ${chart.height}`}
         role="img"

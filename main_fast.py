@@ -18,6 +18,7 @@ from models import Deal, ScoredDeal
 import notifier
 from notifier import MAX_PRIORITY_UNVERIFIED_PER_RUN, send_alert, send_offers
 import digest
+import watches
 import health_check
 import mode
 from price_error import as_scored, find_price_errors
@@ -512,6 +513,10 @@ def save_flood_bans(now: datetime | None = None) -> None:
         log_failure("save Telegram bans", exc)
 
 
+def send_chat_message(chat_id: int, text: str) -> bool:
+    return send_alert(text, chat_id=str(chat_id))
+
+
 def subscriber_filters() -> dict[str, dict]:
     """{chat_id: filters} chosen with /categorias, /tiendas and /minimo (empty on any problem: everyone gets everything)."""
     store = SupabaseSync.from_env()
@@ -803,6 +808,7 @@ def record_heartbeat() -> None:
     if tier != "browser":
         health_check.check(store, "fast")
         digest.run_if_due(store)
+        watches.check(store, send_chat_message)
 
 
 def selftest(limit: int = 3) -> int:

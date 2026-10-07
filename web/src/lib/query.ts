@@ -9,11 +9,11 @@ const ROUND_MS = 10 * 60_000; // la hora se redondea para que la URL (y su cach√
 export const LIST_COLUMNS = [
   "id", "store", "title", "url", "image_url", "category_group", "subcat", "price", "list_price",
   "web_discount_pct", "saving", "verified_pct", "web_confirmed", "history_drop_pct", "points",
-  "prev_min", "last_seen_at",
+  "prev_min", "prev_max", "distinct_prices", "last_seen_at",
 ].join(",");
 
 export const DETAIL_COLUMNS = [
-  LIST_COLUMNS, "category", "distinct_prices", "hist_min", "hist_max", "prev_max", "first_point_at", "first_seen_at",
+  LIST_COLUMNS, "category", "hist_min", "hist_max", "first_point_at", "first_seen_at",
 ].join(",");
 
 const ORDERS: Record<Sort, string> = {

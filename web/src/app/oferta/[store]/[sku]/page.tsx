@@ -4,12 +4,15 @@ import { notFound } from "next/navigation";
 
 import { DealGrid } from "@/components/DealCard";
 import { DiscountTag, VerifiedStamp } from "@/components/DiscountTag";
+import { VerdictBadge } from "@/components/VerdictBadge";
 import { PriceChart } from "@/components/PriceChart";
 import { getHistory, getProduct, getRelated, getSiblings, getStoreStatus } from "@/lib/data";
 import { explainDeal } from "@/lib/explain";
+import { followLink } from "@/lib/follow";
 import { agoFrom, clp, groupName, storeName, subName } from "@/lib/format";
 import { availability, GONE_HOURS } from "@/lib/live";
 import { dealView } from "@/lib/tiers";
+import { verdictFor } from "@/lib/verdict";
 
 export const revalidate = 120;
 
@@ -58,6 +61,8 @@ export default async function ProductPage({ params }: { params: Params }) {
   const view = dealView(row);
   const reasons = explainDeal(row);
   const hasList = row.list_price > row.price;
+  const verdict = ended ? null : verdictFor(row);
+  const follow = ended ? null : followLink(row.store, row.id.slice(row.store.length + 1), process.env.TELEGRAM_BOT_USERNAME);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 sm:py-10">
@@ -117,19 +122,34 @@ export default async function ProductPage({ params }: { params: Params }) {
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
             {ended ? null : <VerifiedStamp verified={view.verified} showUnverified />}
+            {verdict ? <VerdictBadge verdict={verdict} /> : null}
             <span className="text-sm text-muted">Actualizado {agoFrom(row.last_seen_at)}</span>
           </div>
+          {verdict ? <p className="mt-2 max-w-md text-sm text-muted">{verdict.detail}</p> : null}
 
+          <div className="mt-6 flex flex-wrap gap-3">
           <a
             href={row.url}
             target="_blank"
             rel="noopener noreferrer nofollow"
-            className="mt-6 inline-block bg-ink px-6 py-3 text-lg font-semibold text-paper hover:opacity-90"
+            className="inline-block bg-ink px-6 py-3 text-lg font-semibold text-paper hover:opacity-90"
           >
             {ended ? "Revisar en" : "Ver en"} {storeName(row.store)}
           </a>
+          {follow ? (
+            <a
+              href={follow}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block border border-ink px-6 py-3 text-lg font-semibold hover:bg-ink hover:text-paper"
+            >
+              Avísame si baja
+            </a>
+          ) : null}
+          </div>
           <p className="mt-2 max-w-md text-sm text-muted">
             Se abre la tienda en otra pestaña. Confirma el precio ahí antes de comprar.
+            {follow ? " «Avísame si baja» te escribe por Telegram cuando el precio caiga un 5 % o más." : ""}
           </p>
 
           {siblings.length > 0 ? (

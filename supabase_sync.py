@@ -159,6 +159,61 @@ class SupabaseSync:
         if response.status_code >= 400:
             raise SupabaseError(f"PATCH offer_subscribers prefs failed (HTTP {response.status_code}: {response.text[:200]})")
 
+    # -- price alerts (watches.py) --------------------------------------------
+
+    def _patch(self, table: str, params: dict, payload: dict) -> None:
+        response = requests.patch(
+            f"{self.url}/rest/v1/{table}",
+            headers=self._headers("return=minimal"),
+            params=params,
+            data=json.dumps(payload),
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+        if response.status_code >= 400:
+            raise SupabaseError(f"PATCH {table} failed (HTTP {response.status_code}: {response.text[:200]})")
+
+    def get_product(self, product_id: str) -> dict | None:
+        rows = self._get_rows("offer_products", {"select": "id,title,url,price,last_seen_at", "id": f"eq.{product_id}"})
+        return rows[0] if rows else None
+
+    def products_by_ids(self, ids: list[str]) -> dict[str, dict]:
+        found: dict[str, dict] = {}
+        for start in range(0, len(ids), 100):
+            chunk = ids[start : start + 100]
+            quoted = ",".join('"' + product_id.replace('"', "") + '"' for product_id in chunk)
+            for row in self._get_rows(
+                "offer_products", {"select": "id,title,url,price,last_seen_at", "id": f"in.({quoted})"}
+            ):
+                found[row["id"]] = row
+        return found
+
+    def chat_watches(self, chat_id: int) -> list[dict]:
+        return self._get_rows(
+            "offer_watches",
+            {"select": "*", "chat_id": f"eq.{int(chat_id)}", "active": "eq.true", "order": "id"},
+        )
+
+    def active_watches(self) -> list[dict]:
+        return self._get_rows("offer_watches", {"select": "*", "active": "eq.true", "order": "id", "limit": 5000})
+
+    def add_watch(self, chat_id: int, product_id: str, price: int) -> None:
+        self._post(
+            "offer_watches",
+            [{"chat_id": int(chat_id), "product_id": product_id, "baseline_price": int(price), "active": True,
+              "target_price": None, "last_notified_price": None}],
+            prefer="resolution=merge-duplicates,return=minimal",
+            params={"on_conflict": "chat_id,product_id"},
+        )
+
+    def deactivate_watch(self, watch_id: int) -> None:
+        self._patch("offer_watches", {"id": f"eq.{int(watch_id)}"}, {"active": False})
+
+    def set_watch_target(self, watch_id: int, target: int) -> None:
+        self._patch("offer_watches", {"id": f"eq.{int(watch_id)}"}, {"target_price": int(target), "last_notified_price": None})
+
+    def set_watch_notified(self, watch_id: int, price: int | None) -> None:
+        self._patch("offer_watches", {"id": f"eq.{int(watch_id)}"}, {"last_notified_price": price})
+
     def upsert_subscriber(self, chat_id: int, username: str | None, first_name: str | None, active: bool) -> None:
         self._post(
             "offer_subscribers",

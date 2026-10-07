@@ -90,6 +90,7 @@ Los secretos viven en el **environment `env`** del repositorio (Settings → Env
 | `TELEGRAM_CHAT_ID` | secret | Sí | Chat que recibe las ofertas. Escríbele al bot y abre `https://api.telegram.org/bot<TOKEN>/getUpdates` para ver `"chat":{"id":...}` |
 | `TELEGRAM_ALERT_CHAT_ID` | secret | No | Segundo chat/canal/grupo solo para las ofertas grandes (`alerts.alert_chat_min_pct`, 80 %). Si no está, todo va al chat principal. Es un número, negativo para grupos y canales (`-100…`) |
 | `TELEGRAM_PUBLIC_CHAT_ID` | secret | No | Canal público que recibe una copia de cada oferta entregada, para que cualquiera la siga sin registrarse en el bot. `@nombre_del_canal` o el id `-100…`; el bot debe ser administrador con permiso de publicar. Un fallo aquí no pierde la oferta |
+| `TELEGRAM_BOT_USERNAME` | variable de **Vercel** (no de GitHub) | No | Usuario del bot (sin @). Con él, la ficha de cada oferta muestra «Avísame si baja»: abre el bot, que sigue el producto y avisa por Telegram cuando baja un 5 % o más (`/siguiendo`, `/dejar`, `/precio`). Sin él, el botón no aparece |
 | `TELEGRAM_ALERT_THREAD_ID` | secret | No | Si el chat de alertas es un supergrupo con temas, el id del tema donde publicar |
 | `SUPABASE_URL` | secret | No | `https://qxwxftmlqimfausocwoi.supabase.co`. Con las dos claves de Supabase definidas, cada escaneo también se guarda en la base de datos |
 | `SUPABASE_SERVICE_KEY` | secret | No | Clave **secreta** del proyecto (Supabase → Project Settings → API Keys → *Secret key*, `sb_secret_…`). Solo para servidores: nunca en código ni en chats |

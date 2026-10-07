@@ -3,9 +3,11 @@ import Link from "next/link";
 import { agoFrom, clp, storeName } from "@/lib/format";
 import { availability } from "@/lib/live";
 import { dealView } from "@/lib/tiers";
+import { verdictFor } from "@/lib/verdict";
 import type { FeedRow } from "@/lib/types";
 
 import { DiscountTag, VerifiedStamp } from "./DiscountTag";
+import { VerdictBadge } from "./VerdictBadge";
 
 /** Ruta interna de la ficha: /oferta/falabella/80726514 */
 export function productPath(id: string): string {
@@ -17,6 +19,7 @@ export function DealCard({ row, priority = false }: { row: FeedRow; priority?: b
   const view = dealView(row);
   const hasList = row.list_price > row.price;
   const { ended } = availability(row);
+  const verdict = ended ? null : verdictFor(row);
 
   return (
     <article className={`relative flex flex-col border-b border-r border-line bg-surface ${ended ? "ended" : ""}`}>
@@ -62,6 +65,7 @@ export function DealCard({ row, priority = false }: { row: FeedRow; priority?: b
 
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
           {ended ? null : <VerifiedStamp verified={view.verified} />}
+          {verdict && verdict.key !== "real" ? <VerdictBadge verdict={verdict} /> : null}
           <span className="text-xs text-muted">{ended ? `Última vez ${agoFrom(row.last_seen_at)}` : agoFrom(row.last_seen_at)}</span>
         </div>
 

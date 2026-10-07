@@ -13,6 +13,7 @@ import sys
 import requests
 
 import prefs as preferences
+import watches
 from supabase_sync import SupabaseError, SupabaseSync
 
 TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
@@ -28,6 +29,7 @@ WELCOME = (
     "/tiendas — elegir tiendas\n"
     "/minimo — descuento mínimo\n"
     "/mis — ver tus filtros\n"
+    "/siguiendo — productos con alerta de precio\n"
     "/stop — dejar de recibirlas\n"
     "/ayuda — cómo funciona"
 )
@@ -41,6 +43,8 @@ HELP = (
     "/tiendas — elegir tiendas\n"
     "/minimo — descuento mínimo (ej. /minimo 40)\n"
     "/mis — ver tus filtros\n\n"
+    "Alertas de precio: en la ficha de un producto en la web toca «Avísame si baja». "
+    "/siguiendo, /dejar y /precio las administran.\n\n"
     "/stop — dejar de recibirlas\n"
     "/start — volver a recibirlas"
 )
@@ -84,6 +88,17 @@ def handle_update(update: dict, store: SupabaseSync, token: str) -> str | None:
     chat_id = chat["id"]
     command = _command(message.get("text"))
 
+    if command == "/start" and watches.parse_payload((message.get("text") or "").partition(" ")[2]):
+        # Deep link from the web's "Avísame si baja" button: follow that product, without subscribing to everything.
+        product_id = watches.parse_payload((message.get("text") or "").partition(" ")[2])
+        _call(token, "sendMessage", chat_id=chat_id, text=watches.follow(store, chat_id, product_id))
+        return None
+    if command in ("/siguiendo", "/dejar", "/precio"):
+        args = (message.get("text") or "").partition(" ")[2]
+        reply = watches.command(store, chat_id, command, args)
+        if reply:
+            _call(token, "sendMessage", chat_id=chat_id, text=reply)
+        return None
     if command == "/start":
         sender = message.get("from") or {}
         store.upsert_subscriber(chat_id, sender.get("username"), sender.get("first_name"), True)
