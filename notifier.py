@@ -20,8 +20,8 @@ SEND_DELAY_SECONDS = 2.0
 SUBSCRIBER_DELAY_SECONDS = 0.1
 # Each subscriber gets at most this many offers per run (the best ones), and the whole fan-out
 # stops after this long so a big subscriber list cannot run the job into its timeout.
-MAX_SUBSCRIBER_MESSAGES_PER_RUN = 35
-SUBSCRIBER_TIME_BUDGET_SECONDS = 300
+MAX_SUBSCRIBER_MESSAGES_PER_RUN = 15
+SUBSCRIBER_TIME_BUDGET_SECONDS = 240
 # Chats that answered 403 (blocked the bot) during this process. The caller deactivates them.
 UNREACHABLE_CHATS: set[str] = set()
 # Chats Telegram told to wait longer than MAX_RETRY_AFTER_SECONDS (flood ban): chat -> seconds still to wait. Nothing is sent
@@ -29,14 +29,14 @@ UNREACHABLE_CHATS: set[str] = set()
 RATE_LIMITED: dict[str, float] = {}
 # Ceiling per run so a huge sale can't flood the chat. Offers beyond it are not
 # reported as sent, so the caller leaves them unseen and they go out next run.
-MAX_MESSAGES_PER_RUN = 100
+MAX_MESSAGES_PER_RUN = 60
 # Advertised discounts we could NOT confirm against price history are capped per
 # run, separately from the verified quota. They are the 99% of qualifying offers
 # and the ones most likely to be inflated "always 60% off" prices.
-MAX_UNVERIFIED_PER_RUN = 40
+MAX_UNVERIFIED_PER_RUN = 15
 # Priority interests (watchlist "priority") have their own quota for unconfirmed
 # discounts, on top of the generic one, so they never compete with it.
-MAX_PRIORITY_UNVERIFIED_PER_RUN = 50
+MAX_PRIORITY_UNVERIFIED_PER_RUN = 30
 # Possible pricing mistakes are announced first and outside every quota above, but not without limit.
 MAX_PRICE_ERRORS_PER_RUN = 20
 # Wall-clock ceiling for sending to the owner's chats. A run that sent 112 offers took 27 minutes (photos Telegram

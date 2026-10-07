@@ -220,15 +220,15 @@ SOURCE_TIMEOUT_SECONDS = 600
 # Ceiling on unconfirmed advertised discounts sent per day (across all runs), on
 # top of the per-run cap in notifier. Resets at UTC midnight.
 # Raised for the 3-day Cyber (2026-10-05..07): 300 / 15 / 800 were sized for a normal day. Second raise once it started.
-DAILY_UNVERIFIED_CAP = 2500
+DAILY_UNVERIFIED_CAP = 300
 # Most unconfirmed offers one run may send. Together with the pacing below this keeps the
 # chat readable even when a scan finds thousands of candidates.
-UNVERIFIED_PER_RUN = 40
+UNVERIFIED_PER_RUN = 15
 # Hours of the daily cap available from the start of the (UTC) day, so alerts begin right away.
 PACING_HEAD_START_MINUTES = 120
 # Same idea for the priority interests, which have a quota of their own
 # (overridable in the watchlist's "priority" block).
-DEFAULT_PRIORITY_DAILY_CAP = 3500
+DEFAULT_PRIORITY_DAILY_CAP = 800
 
 
 def utc_now() -> datetime:
