@@ -5,7 +5,7 @@ import { FilterPanel } from "@/components/FilterPanel";
 import { Pagination } from "@/components/Pagination";
 import { SortBar } from "@/components/SortBar";
 import { SuperDeals } from "@/components/SuperDeals";
-import { getFeed, getStats, getSuperDeals } from "@/lib/data";
+import { getFeed, getReference, getStats, getSuperDeals } from "@/lib/data";
 import { activeFilterCount, parseFilters } from "@/lib/filters";
 import { agoFrom, groupName, subName } from "@/lib/format";
 
@@ -29,7 +29,11 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const defaultView = !filtered && filters.sort === "best";
   const showSuper = defaultView && filters.page === 1;
 
-  const [stats, superDeals] = await Promise.all([getStats(), defaultView ? getSuperDeals() : Promise.resolve([])]);
+  const [stats, superDeals, asOf] = await Promise.all([
+    getStats(),
+    defaultView ? getSuperDeals() : Promise.resolve([]),
+    getReference(),
+  ]);
   const feed = await getFeed(
     filters,
     superDeals.map((row) => row.id),
@@ -83,7 +87,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         <FilterPanel filters={filters} stats={stats} />
 
         <section aria-labelledby="titulo-listado" className="min-w-0">
-          {showSuper ? <SuperDeals rows={superDeals} /> : null}
+          {showSuper ? <SuperDeals rows={superDeals} asOf={asOf} /> : null}
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
             <h2 id="titulo-listado" className="font-display text-2xl font-semibold">
               {feed.total.toLocaleString("es-CL")} {feed.total === 1 ? "producto" : "productos"}
@@ -93,7 +97,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
           {feed.rows.length > 0 ? (
             <>
-              <DealGrid rows={feed.rows} eager={showSuper && superDeals.length > 0 ? 0 : 4} />
+              <DealGrid rows={feed.rows} eager={showSuper && superDeals.length > 0 ? 0 : 4} asOf={asOf} />
               <Pagination filters={filters} total={feed.total} />
             </>
           ) : (

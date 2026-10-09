@@ -3,6 +3,7 @@ import { Barlow_Condensed, Public_Sans } from "next/font/google";
 
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
+import { StaleNotice } from "@/components/StaleNotice";
 
 import "./globals.css";
 
@@ -51,6 +52,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           Saltar al contenido
         </a>
         <SiteHeader />
+        <StaleNotice />
         <div id="contenido" className="flex-1">
           {children}
         </div>

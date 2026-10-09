@@ -21,9 +21,22 @@ import {
 import { hasCredentials, rest, SupabaseConfigError } from "./supabase";
 import { VERIFIED_MIN_PCT } from "./tiers";
 import type { FeedRow, FeedStats, Mistake, MistakeItem, PricePoint, StoreStatus } from "./types";
-import { availability } from "./live";
+import { availability, referenceTime } from "./live";
 
 export const REVALIDATE_SECONDS = 120;
+
+/** Hora del último escaneo que funcionó (el producto visto más recientemente). Nunca falla: sin dato, es "ahora". */
+export async function getReference(): Promise<number> {
+  if (fixtureMode() || !hasCredentials()) return Date.now();
+  try {
+    const { rows } = await rest<{ last_seen_at: string }[]>("offer_feed?select=last_seen_at&order=last_seen_at.desc&limit=1", {
+      revalidate: 60,
+    });
+    return referenceTime(rows[0]?.last_seen_at);
+  } catch {
+    return Date.now();
+  }
+}
 
 const fixtureMode = () => !hasCredentials() && process.env.NODE_ENV !== "production";
 
@@ -93,7 +106,7 @@ export async function getFeed(filters: Filters, excludeIds: string[] = []): Prom
     return { rows: all.slice(start, start + PAGE_SIZE), total: all.length };
   }
   requireCredentials();
-  const { rows, total } = await rest<FeedRow[]>(`offer_feed?${buildListQuery(filters, Date.now(), PAGE_SIZE, excludeIds)}`, {
+  const { rows, total } = await rest<FeedRow[]>(`offer_feed?${buildListQuery(filters, await getReference(), PAGE_SIZE, excludeIds)}`, {
     count: true,
     revalidate: REVALIDATE_SECONDS,
   });
@@ -103,7 +116,7 @@ export async function getFeed(filters: Filters, excludeIds: string[] = []): Prom
 export async function getSuperDeals(): Promise<FeedRow[]> {
   if (fixtureMode()) return fixtureFilter({ ...DEFAULT_FILTERS, ver: true, min: 60 }).slice(0, 12);
   requireCredentials();
-  const { rows } = await rest<FeedRow[]>(`offer_feed?${buildSuperQuery()}`, { revalidate: REVALIDATE_SECONDS });
+  const { rows } = await rest<FeedRow[]>(`offer_feed?${buildSuperQuery(await getReference())}`, { revalidate: REVALIDATE_SECONDS });
   return rows;
 }
 
@@ -111,6 +124,7 @@ export async function getSuperDeals(): Promise<FeedRow[]> {
 export async function getMistakes(): Promise<MistakeItem[]> {
   if (fixtureMode()) return [];
   requireCredentials();
+  const reference = await getReference();
   const { rows: mistakes } = await rest<Mistake[]>(`offer_sent?${buildMistakesQuery()}`, { revalidate: 60 });
   if (mistakes.length === 0) return [];
   const { rows: products } = await rest<FeedRow[]>(`offer_feed?${buildByIdsQuery(mistakes.map((m) => m.product_id))}`, {
@@ -119,7 +133,7 @@ export async function getMistakes(): Promise<MistakeItem[]> {
   const byId = new Map(products.map((row) => [row.id, row]));
   const items = mistakes.map((mistake): MistakeItem => {
     const row = byId.get(mistake.product_id) ?? null;
-    return { mistake, row, stillValid: Boolean(row && row.price === mistake.price && !availability(row).ended) };
+    return { mistake, row, stillValid: Boolean(row && row.price === mistake.price && !availability(row, reference).ended) };
   });
   // Los que siguen a ese precio primero; dentro de cada grupo, los más recientes.
   return items.sort((a, b) => Number(b.stillValid) - Number(a.stillValid));
@@ -175,7 +189,7 @@ export async function getStoreStatus(id: string): Promise<StoreStatus | null> {
 
 /** La misma publicación en otra tienda de la cadena (mismo código), con su precio. */
 export async function getSiblings(row: FeedRow): Promise<FeedRow[]> {
-  const query = buildSiblingsQuery(row.id);
+  const query = buildSiblingsQuery(row.id, await getReference());
   if (!query) return [];
   if (fixtureMode()) return [];
   requireCredentials();
@@ -190,7 +204,7 @@ export async function getRelated(row: FeedRow): Promise<FeedRow[]> {
       .slice(0, 8);
   }
   requireCredentials();
-  const { rows } = await rest<FeedRow[]>(`offer_feed?${buildRelatedQuery(row.category_group, row.id)}`, {
+  const { rows } = await rest<FeedRow[]>(`offer_feed?${buildRelatedQuery(row.category_group, row.id, await getReference())}`, {
     revalidate: REVALIDATE_SECONDS,
   });
   return rows;

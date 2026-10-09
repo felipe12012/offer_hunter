@@ -10,6 +10,21 @@ export const ENDED_MINUTES = 360;
 /** Pasado este tiempo la ficha no muestra el producto: solo avisa de que ya no está. */
 export const GONE_HOURS = 24;
 
+/** Si el último escaneo que funcionó tiene más de esto, la web avisa de que los datos están desactualizados. */
+export const STALE_NOTICE_MINUTES = 90;
+
+/** Hora de referencia para decidir qué sigue a la venta: la del último escaneo que funcionó, nunca el futuro.
+ *  Si el escaneo se detiene unas horas, medir contra "ahora" vaciaría la web entera; medido contra el último escaneo,
+ *  lo que se veía entonces sigue visible (con un aviso de que los datos son viejos). */
+export function referenceTime(latestSeen: string | null | undefined, now: number = Date.now()): number {
+  const seen = Date.parse(latestSeen ?? "");
+  return Number.isNaN(seen) ? now : Math.min(seen, now);
+}
+
+export function staleMinutes(reference: number, now: number = Date.now()): number {
+  return Math.max(0, Math.round((now - reference) / 60_000));
+}
+
 export type Availability = { ended: boolean; minutes: number };
 
 /** `ended`: lleva más tiempo sin verse del que cabe en un producto que sigue a la venta. */

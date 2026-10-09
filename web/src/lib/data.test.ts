@@ -118,15 +118,20 @@ describe("con credenciales (Supabase)", () => {
   const row = { id: "falabella:1", title: "x", verified_pct: 50 };
 
   it("consulta offer_feed con la clave en la cabecera apikey y devuelve el total", async () => {
-    const calls = mockFetch(() => new Response(JSON.stringify([row]), { status: 200, headers: { "content-range": "0-0/1234" } }));
+    const calls = mockFetch((url) =>
+      url.includes("select=last_seen_at&")
+        ? new Response("[]", { status: 200 })
+        : new Response(JSON.stringify([row]), { status: 200, headers: { "content-range": "0-0/1234" } }),
+    );
     const { getFeed } = await load();
 
     const result = await getFeed(DEFAULT_FILTERS);
 
     expect(result.total).toBe(1234);
     expect(result.rows).toEqual([row]);
-    expect(calls[0].url).toContain("https://p.supabase.co/rest/v1/offer_feed?");
-    const headers = calls[0].init.headers as Record<string, string>;
+    const list = calls.find((call) => !call.url.includes("select=last_seen_at&"))!;
+    expect(list.url).toContain("https://p.supabase.co/rest/v1/offer_feed?");
+    const headers = list.init.headers as Record<string, string>;
     expect(headers.apikey).toBe("sb_secret_abc");
     expect(headers.Authorization).toBeUndefined();
     expect(headers.Prefer).toBe("count=exact");
@@ -142,10 +147,29 @@ describe("con credenciales (Supabase)", () => {
 
   it("reintenta una vez ante un error 5xx", async () => {
     let attempt = 0;
-    mockFetch(() => (++attempt === 1 ? new Response("busy", { status: 503 }) : new Response("[]", { status: 200 })));
+    mockFetch((url) => {
+      if (url.includes("select=last_seen_at&")) return new Response("[]", { status: 200 });
+      return ++attempt === 1 ? new Response("busy", { status: 503 }) : new Response("[]", { status: 200 });
+    });
     const { getFeed } = await load();
     await expect(getFeed(DEFAULT_FILTERS)).resolves.toEqual({ rows: [], total: 0 });
     expect(attempt).toBe(2);
+  });
+
+  it("si el escaneo se detuvo, la lista mide 'a la venta' desde el último escaneo y no desde ahora", async () => {
+    const lastScan = new Date(Date.now() - 10 * 3_600_000).toISOString();
+    const calls = mockFetch((url) =>
+      url.includes("select=last_seen_at&")
+        ? new Response(JSON.stringify([{ last_seen_at: lastScan }]), { status: 200 })
+        : new Response("[]", { status: 200 }),
+    );
+    const { getFeed } = await load();
+    await getFeed(DEFAULT_FILTERS);
+    const list = calls.find((call) => !call.url.includes("select=last_seen_at&"))!;
+    const since = Date.parse(new URL(list.url).searchParams.get("last_seen_at")!.replace("gte.", ""));
+    // 6 h antes del último escaneo (con el redondeo de la consulta), no 6 h antes de ahora
+    expect(Date.parse(lastScan) - since).toBeGreaterThan(5 * 3_600_000);
+    expect(Date.parse(lastScan) - since).toBeLessThan(7 * 3_600_000);
   });
 
   it("un error de Supabase no filtra la clave ni la URL", async () => {

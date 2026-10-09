@@ -15,10 +15,11 @@ export function productPath(id: string): string {
   return `/oferta/${encodeURIComponent(store)}/${encodeURIComponent(rest.join(":"))}`;
 }
 
-export function DealCard({ row, priority = false }: { row: FeedRow; priority?: boolean }) {
+/** `asOf`: hora del último escaneo que funcionó (ver live.ts); sin ella, "ahora". */
+export function DealCard({ row, priority = false, asOf }: { row: FeedRow; priority?: boolean; asOf?: number }) {
   const view = dealView(row);
   const hasList = row.list_price > row.price;
-  const { ended } = availability(row);
+  const { ended } = availability(row, asOf);
   const verdict = ended ? null : verdictFor(row);
 
   return (
@@ -83,11 +84,11 @@ export function DealCard({ row, priority = false }: { row: FeedRow; priority?: b
 }
 
 /** `eager`: cuántas fotos cargan de inmediato (las que se ven sin hacer scroll). */
-export function DealGrid({ rows, eager = 4 }: { rows: FeedRow[]; eager?: number }) {
+export function DealGrid({ rows, eager = 4, asOf }: { rows: FeedRow[]; eager?: number; asOf?: number }) {
   return (
     <div className="grid grid-cols-2 border-l border-t border-line md:grid-cols-3 xl:grid-cols-4">
       {rows.map((row, index) => (
-        <DealCard key={row.id} row={row} priority={index < eager} />
+        <DealCard key={row.id} row={row} priority={index < eager} asOf={asOf} />
       ))}
     </div>
   );

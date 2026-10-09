@@ -15,13 +15,13 @@ function Status({ item }: { item: MistakeItem }) {
 }
 
 /** Posibles errores de precio: la tarjeta del producto con el motivo y su estado actual debajo. */
-export function MistakeList({ items }: { items: MistakeItem[] }) {
+export function MistakeList({ items, asOf }: { items: MistakeItem[]; asOf?: number }) {
   return (
     <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
       {items.map((item) => (
         <li key={`${item.mistake.product_id}:${item.mistake.price}`} className="flex flex-col border border-line bg-surface">
           {item.row ? (
-            <DealCard row={item.row} />
+            <DealCard row={item.row} asOf={asOf} />
           ) : (
             <div className="p-4">
               <p className="font-display text-xl font-semibold">{storeName(item.mistake.product_id.split(":")[0])}</p>

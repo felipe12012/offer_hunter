@@ -6,7 +6,7 @@ import { DealGrid } from "@/components/DealCard";
 import { DiscountTag, VerifiedStamp } from "@/components/DiscountTag";
 import { VerdictBadge } from "@/components/VerdictBadge";
 import { PriceChart } from "@/components/PriceChart";
-import { getHistory, getProduct, getRelated, getSiblings, getStoreStatus } from "@/lib/data";
+import { getHistory, getProduct, getReference, getRelated, getSiblings, getStoreStatus } from "@/lib/data";
 import { explainDeal } from "@/lib/explain";
 import { followLink } from "@/lib/follow";
 import { agoFrom, clp, groupName, storeName, subName } from "@/lib/format";
@@ -33,7 +33,8 @@ export default async function ProductPage({ params }: { params: Params }) {
   const row = await getProduct(productId(store, sku));
   if (!row) notFound();
 
-  const status = availability(row);
+  const asOf = await getReference();
+  const status = availability(row, asOf);
   if (status.minutes > GONE_HOURS * 60) {
     return (
       <main className="mx-auto max-w-3xl px-4 py-16">
@@ -222,7 +223,7 @@ export default async function ProductPage({ params }: { params: Params }) {
           <h2 id="titulo-relacionados" className="mb-3 font-display text-2xl font-semibold">
             Más de {groupName(row.category_group)}
           </h2>
-          <DealGrid rows={related} eager={0} />
+          <DealGrid rows={related} eager={0} asOf={asOf} />
         </section>
       ) : null}
     </main>

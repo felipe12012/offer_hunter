@@ -3,7 +3,7 @@ import Link from "next/link";
 
 import { DealGrid } from "@/components/DealCard";
 import { MistakeList } from "@/components/MistakeList";
-import { getFeed, getMistakes } from "@/lib/data";
+import { getFeed, getMistakes, getReference } from "@/lib/data";
 import { parseFilters } from "@/lib/filters";
 
 // Se renderiza al pedirla (no al compilar: allí no hay credenciales); los datos se cachean 60 s en cada consulta.
@@ -12,9 +12,10 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Cyber: errores de precio y mayores descuentos" };
 
 export default async function CyberPage() {
-  const [mistakes, top] = await Promise.all([
+  const [mistakes, top, asOf] = await Promise.all([
     getMistakes(),
     getFeed(parseFilters({ ver: "1", min: "50" })),
+    getReference(),
   ]);
 
   return (
@@ -37,7 +38,7 @@ export default async function CyberPage() {
         </p>
         <div className="mt-5">
           {mistakes.length > 0 ? (
-            <MistakeList items={mistakes} />
+            <MistakeList items={mistakes} asOf={asOf} />
           ) : (
             <p className="border border-line bg-surface p-6 text-muted">
               Todavía no detectamos ninguno en las últimas 48 horas. Cuando aparezca uno se avisa también en el canal de
@@ -57,7 +58,7 @@ export default async function CyberPage() {
           </Link>
         </div>
         {top.rows.length > 0 ? (
-          <DealGrid rows={top.rows.slice(0, 12)} eager={0} />
+          <DealGrid rows={top.rows.slice(0, 12)} eager={0} asOf={asOf} />
         ) : (
           <p className="border border-line bg-surface p-6 text-muted">Aún no hay descuentos de 50 % o más con historial que los respalde.</p>
         )}
