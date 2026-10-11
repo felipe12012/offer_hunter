@@ -9,7 +9,7 @@ import { getFeed, getReference, getStats, getSuperDeals } from "@/lib/data";
 import { activeFilterCount, parseFilters } from "@/lib/filters";
 import { agoFrom, groupName, subName } from "@/lib/format";
 
-export const revalidate = 120;
+export const revalidate = 600;
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 

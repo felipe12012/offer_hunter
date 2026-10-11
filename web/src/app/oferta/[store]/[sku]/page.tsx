@@ -14,7 +14,7 @@ import { availability, GONE_HOURS } from "@/lib/live";
 import { dealView } from "@/lib/tiers";
 import { verdictFor } from "@/lib/verdict";
 
-export const revalidate = 120;
+export const revalidate = 600;
 
 type Params = Promise<{ store: string; sku: string }>;
 

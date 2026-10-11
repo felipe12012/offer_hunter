@@ -555,6 +555,43 @@ def deactivate_unreachable(subscribers: list[int]) -> None:
         log_failure("deactivate subscribers", exc)
 
 
+# The feed view holds ~106k rows and rebuilding it rewrites the whole thing: it was the biggest consumer of the database's
+# disk IO (about 300 MB per refresh, 5 refreshes an hour) and exhausted the Supabase IO budget. One rebuild per this many
+# minutes is plenty for a page that says "updated X ago"; the browser tier never rebuilds it.
+FEED_REFRESH_MINUTES = 45
+FEED_REFRESH_KEY = "feed:refreshed_at"
+
+
+def feed_refresh_due(last: str | None, now: datetime, tier: str) -> bool:
+    if tier == "browser":
+        return False
+    if not last:
+        return True
+    try:
+        return now - datetime.fromisoformat(last.replace("Z", "+00:00")) >= timedelta(minutes=FEED_REFRESH_MINUTES - 2)
+    except ValueError:
+        return True
+
+
+def refresh_feed_if_due(mirror: SupabaseSync, now: datetime | None = None) -> bool:
+    """Rebuild the public feed view at most every FEED_REFRESH_MINUTES. Returns True when it was rebuilt."""
+    now = now or datetime.now(timezone.utc)
+    tier = (os.environ.get("SCAN_TIER") or "").strip().lower()
+    try:
+        last = mirror.get_bot_state(FEED_REFRESH_KEY)
+    except Exception as exc:
+        log_failure("read the last feed refresh", exc)
+        last = None
+    if not feed_refresh_due(last, now, tier):
+        return False
+    mirror.refresh_feed()
+    try:
+        mirror.set_bot_state(FEED_REFRESH_KEY, now.isoformat())
+    except Exception as exc:
+        log_failure("save the feed refresh time", exc)
+    return True
+
+
 def mirror_to_supabase(
     deals: list[Deal],
     delivered: list[ScoredDeal],
@@ -594,7 +631,7 @@ def mirror_to_supabase(
         )
         # Rebuild the public feed so the web reflects this run. A refresh failure
         # is caught below like any other sync error and never aborts the scan.
-        mirror.refresh_feed()
+        refresh_feed_if_due(mirror)
         line = (
             f"Supabase: {totals['received']} products received, {totals['new']} new, "
             f"{totals['points']} new price points, {len(delivered)} offers recorded"

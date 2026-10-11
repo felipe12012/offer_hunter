@@ -23,14 +23,14 @@ import { VERIFIED_MIN_PCT } from "./tiers";
 import type { FeedRow, FeedStats, Mistake, MistakeItem, PricePoint, StoreStatus } from "./types";
 import { availability, referenceTime } from "./live";
 
-export const REVALIDATE_SECONDS = 120;
+export const REVALIDATE_SECONDS = 600; // la vista se reconstruye cada ~45 min: no hace falta preguntar a la base más seguido
 
 /** Hora del último escaneo que funcionó (el producto visto más recientemente). Nunca falla: sin dato, es "ahora". */
 export async function getReference(): Promise<number> {
   if (fixtureMode() || !hasCredentials()) return Date.now();
   try {
     const { rows } = await rest<{ last_seen_at: string }[]>("offer_feed?select=last_seen_at&order=last_seen_at.desc&limit=1", {
-      revalidate: 60,
+      revalidate: 300,
     });
     return referenceTime(rows[0]?.last_seen_at);
   } catch {
@@ -125,10 +125,10 @@ export async function getMistakes(): Promise<MistakeItem[]> {
   if (fixtureMode()) return [];
   requireCredentials();
   const reference = await getReference();
-  const { rows: mistakes } = await rest<Mistake[]>(`offer_sent?${buildMistakesQuery()}`, { revalidate: 60 });
+  const { rows: mistakes } = await rest<Mistake[]>(`offer_sent?${buildMistakesQuery()}`, { revalidate: 300 });
   if (mistakes.length === 0) return [];
   const { rows: products } = await rest<FeedRow[]>(`offer_feed?${buildByIdsQuery(mistakes.map((m) => m.product_id))}`, {
-    revalidate: 60,
+    revalidate: 300,
   });
   const byId = new Map(products.map((row) => [row.id, row]));
   const items = mistakes.map((mistake): MistakeItem => {
@@ -180,7 +180,7 @@ export async function getStoreStatus(id: string): Promise<StoreStatus | null> {
   if (!query || fixtureMode()) return null;
   requireCredentials();
   try {
-    const { rows } = await rest<StoreStatus[]>(`offer_availability?${query}`, { revalidate: 60 });
+    const { rows } = await rest<StoreStatus[]>(`offer_availability?${query}`, { revalidate: 300 });
     return rows[0] ?? null;
   } catch {
     return null; // dato accesorio: sin él la ficha se ve igual (solo sin el aviso de "agotado")
